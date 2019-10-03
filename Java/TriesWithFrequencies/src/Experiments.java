@@ -30,6 +30,7 @@
 //# "Tries with frequencies for data mining",
 //# https://mathematicaforprediction.wordpress.com/2013/12/06/tries-with-frequencies-for-data-mining/ .
 
+package TriesWithFrequencies;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -81,7 +82,7 @@ public class Experiments {
 
         sampleSeq = new ArrayList<String>() {{
             add("barks"); add("barkers"); add("barked"); add("barkeeps"); add("barkeepers");
-            add("barking"); add("balm"); }};
+            add("barking"); add("balm"); add("barman"); }};
 
         strie = TrieFunctions.createBySplit( sampleSeq, "");
 
@@ -97,7 +98,7 @@ public class Experiments {
         System.out.println("For " + sword );
         System.out.println( "contains: " + TrieFunctions.contains( strie, sword ) );
         System.out.println( "position: " + TrieFunctions.position( strie, sword ) );
-        System.out.println( "complete match: " + TrieFunctions.completeMatch( strie, sword ));
+        System.out.println( "complete match: " + TrieFunctions.hasCompleteMatch( strie, sword ));
         System.out.println();
 
         sword = new ArrayList() {{ add("b"); add("a"); }};
@@ -105,7 +106,7 @@ public class Experiments {
         System.out.println("For " + sword );
         System.out.println( "contains: " + TrieFunctions.contains( strie, sword ) );
         System.out.println( "position: " + TrieFunctions.position( strie, sword ) );
-        System.out.println( "complete match: " + TrieFunctions.completeMatch( strie, sword ));
+        System.out.println( "complete match: " + TrieFunctions.hasCompleteMatch( strie, sword ));
         System.out.println();
 
         Trie ftrie = TrieFunctions.retrieve( strie, sword );
@@ -155,6 +156,10 @@ public class Experiments {
         System.out.println( TrieFunctions.randomChoice( pstrie, false ) );
         System.out.println();
 
+
+        System.out.println( "Top 3 paths :");
+        System.out.println( TrieFunctions.topRootToLeafPaths( pstrie, 3 ) );
+        System.out.println();
 
 //        sampleSeq = new ArrayList<String>() {{ add("ar"); add("as"); }};
 //        List< List<String> > sampleSeqList = new ArrayList<>();

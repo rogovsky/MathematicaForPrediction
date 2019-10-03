@@ -1,6 +1,5 @@
-
 (*
-    MathematicaForPrediction utilities
+    MathematicaForPrediction utilities Mathematica package
     Copyright (C) 2014-2016  Anton Antonov
 
     This program is free software: you can redistribute it and/or modify
@@ -32,79 +31,97 @@
     Mathematica is a registered trademark of Wolfram Research, Inc.
 *)
 
-BeginPackage["MathematicaForPredictionUtilities`"]
+If[Length[DownValues[MosaicPlot`MosaicPlot]] == 0,
+  Echo["MosaicPlot.m", "Importing from GitHub:"];
+  Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/MosaicPlot.m"]
+];
 
-ClassificationSuccessTableForm::usage = "Turns classification success rate rules into and array and applys TableForm to it."
+If[Length[DownValues[CrossTabulate`CrossTabulate]] == 0,
+  Echo["CrossTabulate.m", "Importing from GitHub:"];
+  Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/CrossTabulate.m"]
+];
 
-ClassificationSuccessGrid::usage = "Turns classification success rate rules into and array and applys Grid to it."
 
-NumericVectorSummary::usage = "Summary of a numerical vector."
+BeginPackage["MathematicaForPredictionUtilities`"];
 
-CategoricalVectorSummary::usage = "Summary of a categorical vector."
+ClassificationSuccessTableForm::usage = "Turns classification success rate rules into and array and applys TableForm to it.";
 
-DataColumnsSummary::usage = "Summary of a list of data columns."
+ClassificationSuccessGrid::usage = "Turns classification success rate rules into and array and applys Grid to it.";
 
-RecordsSummary::usage = "Summary of a list of records that form a full two dimensional array."
+NumericVectorSummary::usage = "Summary of a numerical vector.";
+
+CategoricalVectorSummary::usage = "Summary of a categorical vector.";
+
+DataColumnsSummary::usage = "Summary of a list of data columns.";
+
+RecordsSummary::usage = "Summarizes datasets, lists, or associations that can be transformed into \
+full two dimensional arrays. (I.e. lists of records.)";
 
 GridTableForm::usage = "GridTableForm[listOfList, TableHeadings->headings] mimics TableForm by using Grid \
-(and producing fancier outlook)."
+(and producing fancier outlook).";
 
 ParetoLawPlot::usage = "ParetoLawPlot[data,opts] makes a list plot for the manifestation of the Pareto law. \
-It has the same signature and options as ListPlot."
+It has the same signature and options as ListPlot. \
+The argument data is expected to be a numerical a vector or a list of numerical vectors.";
 
 IntervalMappingFunction::usage = "IntervalMappingFunction[boundaries] makes a piece-wise function for mapping of \
-a real value to the enumerated intervals Partition[Join[{-Infinity}, boundaries, {Infinity}], 2, 1]."
+a real value to the enumerated intervals Partition[Join[{-Infinity}, boundaries, {Infinity}], 2, 1].";
 
 ToCategoricalColumns::usage = "ToCategoricalColumns[data_?ArrayQ, qs_: Range[0, 1, 0.2]] \
-converts the numerical columns of an array to categorical. (Using IntervalMappingFunction.)"
+converts the numerical columns of an array to categorical. (Using IntervalMappingFunction.)";
 
 VariableDependenceGrid::usage = "VariableDependenceGrid[data_?MatrixQ,columnNames,opts] makes a grid with \
-variable dependence plots."
+variable dependence plots.";
 
-ExcessKurtosis::usage = "ExcessKurtosis[d] computes the excess kurtosis for d (which is Kurtosis[d]-3)."
+ExcessKurtosis::usage = "ExcessKurtosis[d] computes the excess kurtosis for d (which is Kurtosis[d]-3).";
 
 KurtosisUpperBound::usage = "KurtosisUpperBound[vec_?VectorQ] computes the upper bound of the kurtosis of vec. \
 KurtosisUpperBound[d_,n_Integer] computes the upper bound of the kurtosis of a sample of size n from \
-the distribution d."
+the distribution d.";
 
 GridOfCodeAndComments::usage = "GridOfCodeAndComments[code_String, opts___] tabulates code and comments. \
-The tabulation function is specified with the option \"GridFunction\"."
+The tabulation function is specified with the option \"GridFunction\".";
 
-CrossTensorate::usage = "Finds the contingency co-occurance values for multiple columns of a matrix \
-using a formula specification. The first argument is the formula with the form \
-Count == cn1 + cn2 + ... or cn0 == cn1 + cn2 + ..."
+DataRulesForClassifyQ::usage = "Checks is the argument is a list of item->label rules that can be used by Classify.";
 
-CrossTensorateSplit::usage = "Splits the result of CrossTensorate along a variable. The result can be \
-shown with MatrixPlot."
+DataArrayRulesForClassifyQ::usage = "Checks is the argument is a list of record->label rules that can be used by Classify. \
+All records should form an array.";
 
-CrossTabulate::usage = "Finds the contigency co-occurance values in a matrix (2D array). The result can be \
-shown with MatrixPlot."
+ImportCSVToDataset::usage = "Imports a CSV file and attempts to convert into a Dataset object.";
 
-xtabsViaRLink::usage = "Calling R's function xtabs {stats} via RLink`."
+DatasetColumnNumericQ::usage = "DatasetColumnNumericQ[ds] Returns Vector[#,NumericQ]& over the columns of ds \
+after removing missing and NA values.";
 
-FromRXTabsForm::usage = "Transforms RObject result of xtabsViaRLink into an association."
+ToAutomaticKeysAssociation::usage = "ToAutomaticKeysAssociation[ls_List, prefix_String] makes an association with \
+automatically derived keys.";
 
-Begin["`Private`"]
-
-
-If[Length[DownValues[MosaicPlot`MosaicPlot]] == 0,
-  Get["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/MosaicPlot.m"]
-];
+Begin["`Private`"];
 
 Needs["MosaicPlot`"];
+Needs["CrossTabulate`"];
 
-Clear[KurtosisUpperBound, ExcessKurtosis]
+
+(*===========================================================*)
+(* ExcessKurtosis                                            *)
+(*===========================================================*)
+
+Clear[KurtosisUpperBound, ExcessKurtosis];
 
 ExcessKurtosis[d_] := Kurtosis[d] - 3;
 
 KurtosisUpperBound[vec_?VectorQ] :=
     Block[{n = Length[vec]},
-      1/2 (n - 3)/(n - 2) (CentralMoment[vec, 3]/StandardDeviation[vec]^3)^2 + n/2];
+      1 / 2 (n - 3) / (n - 2) (CentralMoment[vec, 3] / StandardDeviation[vec]^3)^2 + n / 2];
 
-KurtosisUpperBound[d_,n_Integer] :=
-    Block[{}, 1/2 (n - 3)/(n - 2) (CentralMoment[d, 3]/StandardDeviation[d]^3)^2 + n/2];
+KurtosisUpperBound[d_, n_Integer] :=
+    Block[{}, 1 / 2 (n - 3) / (n - 2) (CentralMoment[d, 3] / StandardDeviation[d]^3)^2 + n / 2];
 
-Clear[ClassificationSuccessTableForm]
+
+(*===========================================================*)
+(* ClassificationSuccessTableForm                            *)
+(*===========================================================*)
+
+Clear[ClassificationSuccessTableForm];
 ClassificationSuccessTableForm[ctRules_] :=
     Block[{labels = Union[ctRules[[All, 1, 1]]]},
       TableForm[
@@ -114,7 +131,7 @@ ClassificationSuccessTableForm[ctRules_] :=
         TableHeadings -> {labels, {True, False}}]
     ];
 
-Clear[ClassificationSuccessGrid]
+Clear[ClassificationSuccessGrid];
 ClassificationSuccessGrid[ctRules_] :=
     Block[{labels = Union[ctRules[[All, 1, 1]]], gridData},
       gridData =
@@ -127,73 +144,198 @@ ClassificationSuccessGrid[ctRules_] :=
         Spacings -> {2, Automatic}]
     ];
 
-Clear[NumericVectorSummary, CategoricalVectorSummary]
+
+(*===========================================================*)
+(* DataRulesForClassifyQ                                     *)
+(*===========================================================*)
+
+Clear[DataRulesForClassifyQ];
+DataRulesForClassifyQ[data_] := MatchQ[data, {Rule[_?AtomQ, _] ..}] || DataArrayRulesForClassifyQ[data];
+
+Clear[DataArrayRulesForClassifyQ];
+DataArrayRulesForClassifyQ[data_] := MatchQ[data, {Rule[_List, _] ..}] && ArrayQ[data[[All, 1]]];
+
+
+(*===========================================================*)
+(* RecordsSummary and related functions                      *)
+(*===========================================================*)
+
+Clear[NumericVectorSummary, CategoricalVectorSummary];
+
 NumericVectorSummary[dvec_] :=
-    Block[{r},
-      r = Flatten[Through[{Min, Max, Mean, Quartiles}[DeleteMissing[dvec]]]];
-      SortBy[Transpose[{{"Min", "Max", "Mean", "1st Qu", "Median", "3rd Qu"}, r}], #[[2]] &]
+    Block[{r, cm, ndvec = dvec},
+      ndvec = DeleteMissing[dvec];
+      If[ Length[ ndvec ] == 0,
+        r = {},
+        (* ELSE *)
+        r = Flatten[Through[{Min, Max, Mean, Quartiles}[ndvec]]] /. x_Rational :> N[x];
+        r = SortBy[Transpose[{{"Min", "Max", "Mean", "1st Qu", "Median", "3rd Qu"}, DeleteMissing[r]}], #[[2]] &];
+      ];
+      cm = Count[dvec, Missing[___]];
+      If[ TrueQ[cm > 0], Append[r, { "Missing[___]", cm}], r ]
     ] /; VectorQ[DeleteMissing[dvec], NumberQ];
-CategoricalVectorSummary[dvec_, maxTallies_Integer: 7] :=
-    Block[{r},
+
+CategoricalVectorSummary[dvec_, maxTallies_Integer : 7] :=
+    Block[{r, missingRows = {} },
       r = SortBy[Tally[dvec], -#[[2]] &];
-      If[Length[r] <= maxTallies, r,
-        Join[r[[1 ;; maxTallies - 1]], {{"(Other)", Total[r[[maxTallies ;; -1, 2]]]}}]
-      ]
+      If[ !FreeQ[ r, Missing[___] ],
+        missingRows = Cases[ r, {Missing[___], _} ];
+        r = DeleteCases[ r, {Missing[___], _} ]
+      ];
+      If[Length[r] > 0 && Length[r] <= maxTallies, r,
+        r = Join[r[[1 ;; maxTallies - 1]], {{"(Other)", Total[r[[maxTallies ;; -1, 2]]]}}]
+      ];
+      Join[ r, missingRows ]
     ] /; VectorQ[dvec];
 
-Clear[DataColumnsSummary]
-Options[DataColumnsSummary] = {"MaxTallies" -> 7, "NumberedColumns" -> True};
+Clear[DateObjectVectorSummary];
+DateObjectVectorSummary[dvec_, args___] :=
+    Block[{r, cm, ndvec = dvec},
+      ndvec = DeleteMissing[dvec];
+      If[Length[ndvec] == 0,
+        r = {},
+        (*ELSE*)
+        r = NumericVectorSummary[AbsoluteTime /@ ndvec, args];
+        r[[All, 2]] = DateObject /@ r[[All, 2]]
+      ];
+      cm = Count[dvec, Missing[___]];
+      If[TrueQ[cm > 0], Append[r, {"Missing[___]", cm}], r]
+    ] /; VectorQ[DeleteMissing[dvec], DateObjectQ];
+
+
+Clear[DataColumnsSummary];
+(* The option Thread->False is just for compatibility with RecordsSummary. *)
+Options[DataColumnsSummary] = {"MaxTallies" -> 7, "NumberedColumns" -> True, Thread -> False};
+
 DataColumnsSummary[dataColumns_, opts : OptionsPattern[]] :=
     DataColumnsSummary[dataColumns, Table["column " <> ToString[i], {i, 1, Length[dataColumns]}], opts];
+
 DataColumnsSummary[dataColumns_, columnNamesArg_, opts : OptionsPattern[]] :=
     Block[{columnTypes, columnNames = columnNamesArg,
       maxTallies = OptionValue[DataColumnsSummary, "MaxTallies"],
       numberedColumnsQ = TrueQ[OptionValue[DataColumnsSummary, "NumberedColumns"]]},
+
       If[numberedColumnsQ,
-        columnNames = MapIndexed[ToString[#2[[1]]] <> " " <> #1 &, columnNames]
+        columnNames = MapIndexed[ToString[#2[[1]]] <> " " <> ToString[#1] &, columnNames]
       ];
-      columnTypes = Map[If[VectorQ[#,NumberQ], Number, Symbol] &, dataColumns];
+
+      columnTypes =
+          Map[
+            Which[
+              VectorQ[DeleteMissing[#], NumberQ], Number,
+              VectorQ[DeleteMissing[#], DateObjectQ], DateObject,
+              True, Symbol
+            ] &,
+            dataColumns];
+
       MapThread[
         Column[{
           Style[#1, Blue, FontFamily -> "Times"],
-          If[TrueQ[#2 === Number],
-            Grid[NumericVectorSummary[#3], Alignment -> Left],
-            Grid[CategoricalVectorSummary[#3, maxTallies],
-              Alignment -> Left]
-          ]}] &, {columnNames, columnTypes, dataColumns}, 1]
+
+          Switch[#2,
+            Number, Grid[NumericVectorSummary[#3], Alignment -> Left],
+
+            DateObject, Grid[DateObjectVectorSummary[#3], Alignment -> Left],
+
+            Symbol, Grid[CategoricalVectorSummary[#3, maxTallies], Alignment -> Left]
+          ]
+        }] &,
+        {columnNames, columnTypes, dataColumns}, 1]
+
     ] /; Length[dataColumns] == Length[columnNamesArg];
 
-RecordsSummary::arrdepth = "The first argument is expected to be a full array of depth 1 or 2."
+RecordsSummary::args = "The first argument is expected to be a full array of depth 1 or 2, \
+a dataset that can be converted to such a full array, an association, or a list of rules.";
+
+RecordsSummary::igncols = "When the first argument is a dataset the second, column names argument is ignored.";
 
 Clear[RecordsSummary];
-RecordsSummary[dataRecords_Dataset, opts : OptionsPattern[] ]:=
-    Block[{colKeys},
-      colKeys = Normal[ dataRecords[[1]] ];
-      If[ MatchQ[colKeys, _Association],
-        RecordsSummary[ Normal[dataRecords[All, Values]], Keys[colKeys], opts ],
-        RecordsSummary[ Normal[dataRecords], opts ]
+
+SyntaxInformation[RecordsSummary] = {"ArgumentsPattern" -> {_, _., OptionsPattern[]}};
+
+RecordsSummary[{}, ___] := {};
+
+RecordsSummary[dataRecords_Dataset, dummy_List, opts : OptionsPattern[] ] :=
+    Block[{},
+      Message[RecordsSummary::igncols];
+      RecordsSummary[dataRecords, opts]
+    ];
+
+RecordsSummary[dataRecords_Dataset, opts : OptionsPattern[] ] :=
+    Block[{row1, colKeys, records},
+
+      row1 = Normal[dataRecords[1]];
+      If[ MatchQ[row1, _Association],
+        colKeys = Keys[row1];
+        ,
+        colKeys = Table["", Length[row1]]
+      ];
+
+      Which[
+        MatchQ[row1, _Association],
+        records = Normal[dataRecords[All, Values]];
+        If[ MatchQ[records, _Association], records = Values[records] ];
+        RecordsSummary[ Normal[records], colKeys, opts ],
+
+        True,
+        records = Normal[dataRecords];
+        If[ MatchQ[records, _Association], records = Values[records] ];
+        RecordsSummary[ records, colKeys, opts ]
       ]
     ];
+
 RecordsSummary[dataRecords_, opts : OptionsPattern[]] :=
     DataColumnsSummary[Transpose[dataRecords], opts] /; ( ArrayQ[dataRecords] && ArrayDepth[dataRecords] == 2 );
+
+RecordsSummary[dataRecords_, columnNames_?AtomQ, opts : OptionsPattern[]] :=
+    RecordsSummary[dataRecords, {columnNames}, opts];
+
 RecordsSummary[dataRecords_, columnNames_, opts : OptionsPattern[]] :=
     DataColumnsSummary[Transpose[dataRecords], columnNames, opts] /; ( ArrayQ[dataRecords] && ArrayDepth[dataRecords] == 2 );
-RecordsSummary[dataRecords_, args___ ] :=
-    RecordsSummary[ List /@ dataRecords, args ] /; ( ArrayQ[dataRecords] && ArrayDepth[dataRecords] == 1 );
-RecordsSummary[___] := (Message[RecordsSummary::arrdepth];$Failed);
 
-Clear[GridTableForm]
+RecordsSummary[dataRecords_?AssociationQ, args___] :=
+    RecordsSummary[Normal[dataRecords], args];
+
+RecordsSummary[dataRecords_?DataRulesForClassifyQ, varNames_Rule, opts : OptionsPattern[]] :=
+    Block[{newArgs = {opts}},
+      newArgs = DeleteCases[newArgs, Rule[Thread, __] ];
+      Rule @@
+          MapThread[
+            RecordsSummary[#1, #2, newArgs] &,
+            {Transpose[List @@@ dataRecords], Map[Flatten@*List, List @@ varNames]}
+          ]
+    ] /; DataRulesForClassifyQ[List[varNames]] && MemberQ[{opts}, Thread -> True ];
+
+RecordsSummary[dataRecords_?DataRulesForClassifyQ, args___] :=
+    Block[{newArgs = {args}},
+      newArgs = DeleteCases[newArgs, Rule[Thread, __] ];
+      Rule @@ Map[RecordsSummary[#, newArgs]&, Transpose[List @@@ dataRecords]] /; MemberQ[{args}, Thread -> True ]
+    ];
+
+RecordsSummary[dataRecords_, args___ ] :=
+    RecordsSummary[ List /@ dataRecords, args ] /; ( ArrayQ[dataRecords] && ArrayDepth[dataRecords] == 1 && Length[dataRecords] > 0);
+
+RecordsSummary[a_Association, args___] := Map[ RecordsSummary[#, args]&, a];
+
+RecordsSummary[___] := (Message[RecordsSummary::args];$Failed);
+
+
+(*===========================================================*)
+(* GridTableForm                                             *)
+(*===========================================================*)
+
+Clear[GridTableForm];
 Options[GridTableForm] = Join[ {TableHeadings -> None}, Options[Grid] ];
 GridTableForm[data_, opts : OptionsPattern[]] :=
-    Block[{gridData, gridHeadings, dataVecQ=False},
+    Block[{gridData, gridHeadings, dataVecQ = False},
       gridHeadings = OptionValue[GridTableForm, TableHeadings];
       gridData = data;
-      If[VectorQ[data], dataVecQ = True; gridData=List@data ];
+      If[VectorQ[data], dataVecQ = True; gridData = List@data ];
       gridData = Map[Join[#, Table["", {Max[Length /@ gridData] - Length[#]}]] &, gridData];
       gridData = MapIndexed[Prepend[#1, #2[[1]]] &, gridData];
       If[gridHeadings === None || ! ListQ[gridHeadings],
         gridHeadings = Join[{"#"}, Range[1, Length[gridData[[1]]] - 1]],
-      (*ELSE*)
+        (*ELSE*)
         gridHeadings = Join[{"#"}, gridHeadings];
       ];
       gridHeadings = Map[Style[#, Blue, FontFamily -> "Times"] &, gridHeadings];
@@ -203,57 +345,134 @@ GridTableForm[data_, opts : OptionsPattern[]] :=
       gridData = Prepend[gridData, gridHeadings];
       (*If[dataVecQ, gridData = Transpose[gridData] ];*)
       Grid[gridData,
-        DeleteCases[ {opts}, (TableHeadings->_)],
+        DeleteCases[ {opts}, (TableHeadings -> _)],
         Alignment -> Left,
         Dividers -> {Join[{1 -> Black, 2 -> Black},
           Thread[Range[3, Length[gridData[[2]]] + 1] -> GrayLevel[0.8]], {Length[gridData[[2]]] + 1 -> Black}], {True, True, {False}, True}},
-        Background -> {Automatic, Flatten[Table[{White, GrayLevel[0.96]}, {Length[gridData]/2}]]}]
+        Background -> {Automatic, Flatten[Table[{White, GrayLevel[0.96]}, {Length[gridData] / 2}]]}]
     ];
 
 
-Clear[ParetoLawPlot]
+(*===========================================================*)
+(* ParetoLawPlot                                             *)
+(*===========================================================*)
+
+Clear[ParetoLawPlot];
 Options[ParetoLawPlot] = Options[ListPlot];
 ParetoLawPlot[dataVec : {_?NumberQ ..}, opts : OptionsPattern[]] := ParetoLawPlot[{Tooltip[dataVec, 1]}, opts];
 ParetoLawPlot[dataVecs : {{_?NumberQ ..} ..}, opts : OptionsPattern[]] :=
     ParetoLawPlot[MapThread[Tooltip, {dataVecs, Range[Length[dataVecs]]}], opts];
 ParetoLawPlot[dataVecs : {Tooltip[{_?NumberQ ..}, _] ..}, opts : OptionsPattern[]] :=
     Block[{t, mc = 0.5},
-      t = Map[
-        Tooltip[(Accumulate[#]/Total[#] &)[SortBy[#[[1]], -# &]], #[[2]]] &,
-        dataVecs];
+      t = Map[ Tooltip[(Accumulate[#] / Total[#] &)[SortBy[#[[1]], -# &]], #[[2]]] &, dataVecs];
       ListPlot[t, opts, PlotRange -> All,
         GridLines -> {Length[t[[1, 1]]] Range[0.1, mc, 0.1], {0.8}},
         Frame -> True,
-        FrameTicks -> {{Automatic, Automatic}, {Automatic,
-          Table[{Length[t[[1, 1]]] c, ToString[Round[100 c]] <> "%"}, {c,
-            Range[0.1, mc, 0.1]}]}}]
+        FrameTicks -> {{Automatic, Automatic}, {Automatic, Table[{Length[t[[1, 1]]] c, ToString[Round[100 c]] <> "%"}, {c, Range[0.1, mc, 0.1]}]}}]
     ];
 
-Clear[IntervalMappingFunction]
+
+(*===========================================================*)
+(* IntervalMappingFunction                                   *)
+(*===========================================================*)
+
+Clear[IntervalMappingFunction];
 IntervalMappingFunction[qBoundaries : {_?NumberQ ...}] :=
     Block[{XXX, t = Partition[Join[{-\[Infinity]}, qBoundaries, {\[Infinity]}], 2, 1]},
       Function[
         Evaluate[Piecewise[
-          MapThread[{#2, #1[[1]] < XXX <= #1[[2]]} &, {t,
-            Range[1, Length[t]]}]] /. {XXX -> #}]]
+          MapThread[{#2, #1[[1]] < XXX <= #1[[2]]} &, {t, Range[1, Length[t]]}]] /. {XXX -> #}]]
     ];
 
-ClearAll[ToCategoricalColumns]
-ToCategoricalColumns[data_?ArrayQ, qs_: Range[0, 1, 0.2]] :=
-    Block[{inds, imFuncs, res},
+
+(***********************************************************)
+(* ToCategoricalColumns                                  *)
+(***********************************************************)
+
+Clear[ToCategoricalColumns];
+
+ToCategoricalColumns::mslen = "The second argument is expected to be a numerical vector or \
+a list of numerical vectors. When a lists of numerical vectors then the length of that list \
+is expected to be equal to the number of numerical columns of the first argument.";
+
+Options[ToCategoricalColumns] = { "QuantileBreaks" -> False };
+
+ToCategoricalColumns[data_?ArrayQ, breaks_List : Range[0, 1, 0.1], opts : OptionsPattern[] ] :=
+    Block[{inds, imFuncs, res, quantileBreaksQ},
+
+      quantileBreaksQ = TrueQ[ OptionValue[ ToCategoricalColumns, "QuantileBreaks" ] ];
+
       inds =
           Pick[Range[Dimensions[data][[2]]],
             VectorQ[#, NumericQ] & /@ Transpose[Take[data, UpTo[12]]]];
-      imFuncs =
-          IntervalMappingFunction /@ (Quantile[#, qs] & /@
-              Transpose[data[[All, inds]]]);
+
+      Which[
+        quantileBreaksQ && VectorQ[ breaks, NumericQ ],
+        imFuncs =
+            IntervalMappingFunction /@ (Quantile[DeleteMissing[#], breaks] & /@ Transpose[data[[All, inds]]]),
+
+        quantileBreaksQ && Length[breaks] == Length[inds] && Apply[ And, VectorQ[ #, NumericQ ]& /@ breaks],
+        imFuncs = MapIndexed[ IntervalMappingFunction[ Quantile[  DeleteMissing[ data[[All, #1]] ], breaks[[ #2[[1]] ]] ] ] &, inds ],
+
+        VectorQ[ breaks, NumericQ],
+        imFuncs = Table[ IntervalMappingFunction[breaks], Length[inds] ],
+
+        Length[breaks] == Length[inds] && Apply[ And, VectorQ[ #, NumericQ ]& /@ breaks ],
+        imFuncs = Map[ IntervalMappingFunction, breaks ],
+
+        True,
+        Message[ToCategoricalColumns::mslen];
+        Return[$Failed]
+      ];
+
       res = data;
-      Do[res[[All, inds[[i]]]] =
-          imFuncs[[i]] /@ res[[All, inds[[i]]]], {i, Length[inds]}];
+      Do[res[[All, inds[[i]]]] = res[[All, inds[[i]]]] /. x_?NumericQ :> imFuncs[[i]][x], {i, Length[inds]}];
+
       res
     ] /; Length[Dimensions[data]] == 2;
 
-Clear[VariableDependenceGrid]
+ToCategoricalColumns[ds_Dataset, breaks_List : Range[0, 1, 0.1], opts : OptionsPattern[] ] :=
+    Block[{aNumColsQ, numCols, imFuncs, quantileBreaksQ},
+
+      quantileBreaksQ = TrueQ[ OptionValue[ ToCategoricalColumns, "QuantileBreaks" ] ];
+
+      aNumColsQ =
+          Normal @ ds[Transpose /* Query[All, VectorQ[DeleteMissing[#], NumericQ] &]];
+
+      numCols = Keys[Pick[aNumColsQ, Values[aNumColsQ]]];
+
+      Which[
+        quantileBreaksQ && VectorQ[ breaks, NumericQ ],
+        imFuncs = IntervalMappingFunction /@ (Quantile[DeleteMissing[#], breaks] & /@ Transpose[ds[All, numCols]]);
+        imFuncs = Normal @ imFuncs,
+
+        quantileBreaksQ && Length[breaks] == Length[numCols] && Apply[ And, VectorQ[ #, NumericQ ]& /@ breaks],
+        imFuncs = Association @ MapIndexed[ #1 -> IntervalMappingFunction[ Quantile[ Normal @ DeleteMissing[ ds[All, #1] ], breaks[[ #2[[1]] ]] ] ] &, numCols ],
+
+        VectorQ[ breaks, NumericQ],
+        imFuncs = AssociationThread[ numCols -> Table[ IntervalMappingFunction[breaks], Length[numCols]] ],
+
+        Length[breaks] == Length[numCols] && Apply[ And, VectorQ[ #, NumericQ ]& /@ breaks ],
+        imFuncs = AssociationThread[ numCols -> Map[ IntervalMappingFunction, breaks ] ],
+
+        True,
+        Message[ToCategoricalColumns::mslen];
+        Return[$Failed]
+      ];
+
+      Fold[
+        Function[{d, k}, d[All, <|#, k -> (Slot[k] /. y_?NumericQ :> (imFuncs[k])[y])|> &]],
+        ds,
+        Keys[imFuncs]
+      ]
+    ];
+
+
+(***********************************************************)
+(* VariableDependenceGrid                                  *)
+(***********************************************************)
+
+Clear[VariableDependenceGrid];
 Options[VariableDependenceGrid] = {"IgnoreCategoricalVariables" -> False};
 VariableDependenceGrid[data_Dataset, args___] :=
     Block[{colKeys},
@@ -270,7 +489,7 @@ VariableDependenceGrid[data_?MatrixQ, columnNamesArg_, opts : OptionsPattern[]] 
       varTypes = Map[VectorQ[DeleteMissing[#], NumericQ] &, Transpose[data]];
 
       If[ Length[columnNames] < Dimensions[data][[2]],
-        AppendTo[ columnNames, Length[columnNames] + Range[Dimensions[data][[2]]-Length[columnNames]]]
+        AppendTo[ columnNames, Length[columnNames] + Range[Dimensions[data][[2]] - Length[columnNames]]]
       ];
 
       ninds = Range[Dimensions[data][[2]]];
@@ -292,7 +511,7 @@ VariableDependenceGrid[data_?MatrixQ, columnNamesArg_, opts : OptionsPattern[]] 
               PlotRange -> All, AspectRatio -> 1, Frame -> True],
 
             TrueQ[! varTypes[[#[[1]]]] && ! varTypes[[#[[2]]]]],
-            MosaicPlot[data[[All, #]], "LabelRotation"->{{1,4},{4,1}}, ColorRules -> {1 -> ColorData[7, "ColorList"]}],
+            MosaicPlot[data[[All, #]], "LabelRotation" -> {{1, 4}, {4, 1}}, ColorRules -> {1 -> ColorData[7, "ColorList"]}],
 
             TrueQ[varTypes[[#[[1]]]] && ! varTypes[[#[[2]]]]],
             ddata = Map[Prepend[#[[All, 1]], #[[1, -1]]] &, GatherBy[data[[All, #]], Last]];
@@ -317,10 +536,10 @@ VariableDependenceGrid[data_?MatrixQ, columnNamesArg_, opts : OptionsPattern[]] 
 (* GridOfCodeAndComments                                   *)
 (***********************************************************)
 
-ClearAll[GridOfCodeAndComments]
+ClearAll[GridOfCodeAndComments];
 Options[GridOfCodeAndComments] = {"GridFunction" -> (Grid[#, Alignment -> Left] &)};
 GridOfCodeAndComments[code_String, opts : OptionsPattern[]] :=
-    Block[{grData, codeLines, commentLines, comPat, gridFunc},
+    Block[{grData, codeLines, comPat, gridFunc},
       gridFunc = OptionValue["GridFunction"];
       If[TrueQ[gridFunc === Automatic],
         gridFunc = (Grid[#, Alignment -> Left] &)];
@@ -347,171 +566,48 @@ GridOfCodeAndComments[code_String, opts : OptionsPattern[]] :=
       gridFunc[grData]
     ];
 
+
 (***********************************************************)
-(* CrossTensorate and related functions                    *)
+(* Import CSV files into Dataset objects                   *)
 (***********************************************************)
 
-Clear[CrossTensorate]
-
-SetAttributes[CrossTensorate, HoldFirst];
-
-CrossTensorate::wcnames = "The third argument for the data column names is expected to be Automatic, \
-an Association, or a list with length equal to the number of columns in the \
-data." ;
-CrossTensorate::wargs = "Wrong arguments.";
-CrossTensorate::mcnames = "Not all formula column names are found in the column names specified by \
-the third argument.";
-
-CrossTensorate[formula_Equal, data_Dataset, columnNames_: Automatic ] :=
-    Block[{colKeys},
-      colKeys = Normal[ data[[1]] ];
-      Which[
-        MatchQ[colKeys, _Association] && TrueQ[columnNames===Automatic],
-        CrossTensorate[ formula, Normal[data[All, Values]], Keys[colKeys] ],
-        MatchQ[colKeys, _Association],
-        CrossTensorate[ formula, Normal[data[All, Values]], columnNames ],
-        True,
-        CrossTensorate[ formula, Normal[data], columnNames ]
-      ]
-    ]/; Length[Dimensions[data]]==2;
-
-CrossTensorate[formula_Equal, data_?MatrixQ, columnNames_: Automatic] :=
-    Block[{aColumnNames, idRules, formulaLHS, formulaRHS, t},
-
-      Which[
-        TrueQ[columnNames === Automatic],
-        aColumnNames =
-            AssociationThread[Range[Dimensions[data][[2]]] -> Range[Dimensions[data][[2]]]],
-        ListQ[columnNames] && Length[columnNames] == Dimensions[data][[2]],
-        aColumnNames = AssociationThread[columnNames -> Range[Dimensions[data][[2]]]],
-        AssociationQ[columnNames],
-        aColumnNames = columnNames,
-        True,
-        Message[CrossTensorate::wcnames]; Return[{}]
+Clear[ImportCSVToDataset];
+Options[ImportCSVToDataset] = {"RowNames" -> False, "ColumnNames" -> True};
+ImportCSVToDataset[fname_String, opts : OptionsPattern[]] :=
+    Block[{data},
+      data = Import[fname];
+      If[OptionValue["ColumnNames"],
+        data = Dataset[Dataset[Rest[data]][All, AssociationThread[First[data], #] &]],
+        (*ELSE*)
+        data = Dataset[data]
       ];
-
-      aColumnNames =
-          Join[ aColumnNames, AssociationThread[Range[Dimensions[data][[2]]]->Range[Dimensions[data][[2]]]] ];
-
-      formulaLHS = formula[[1]];
-
-      If[! TrueQ[formulaLHS === Count], formulaLHS = aColumnNames[formulaLHS]];
-
-      formulaRHS = ReleaseHold[Hold[formula] /. Plus -> List][[2]];
-
-      If[Length[Intersection[Keys[aColumnNames], formulaRHS]] < Length[formulaRHS],
-        Message[CrossTensorate::mcnames]; Return[{}]
+      If[OptionValue["RowNames"],
+        data = Dataset[AssociationThread[Normal[data[All, First]], Normal[data[All, Rest]]]]
       ];
-
-      formulaRHS = aColumnNames /@ formulaRHS;
-      idRules = Table[(t = Union[data[[All, i]]];Dispatch@Thread[t -> Range[Length[t]]]), {i, formulaRHS}];
-      Which[
-        TrueQ[formulaLHS === Count],
-        t = SparseArray[
-          Map[MapThread[Replace, {#[[1]], idRules}] -> #[[2]] &,
-            Tally[data[[All, formulaRHS]]]]],
-        IntegerQ[formulaLHS],
-        t = SparseArray[
-          Map[MapThread[Replace, {#[[1]], idRules}] -> #[[2]] &,
-            Map[{#[[1, 1 ;; -2]], Total[#[[All, -1]]]} &,
-              GatherBy[data[[All, Append[formulaRHS, formulaLHS]]], Most]]]],
-        True,
-        Message[CrossTensorate::wargs]; Return[{}]
-      ];
-      Join[<|"XTABTensor" -> t|>, AssociationThread[ Keys[aColumnNames][[formulaRHS]] -> Map[Normal[#][[All, 1]] &, idRules]]]
-    ] /; (AssociationQ[columnNames] || ListQ[columnNames] || TrueQ[columnNames === Automatic]);
-
-
-ClearAll[CrossTensorateSplit]
-CrossTensorateSplit::nvar = "The second argument is expected to be a key in the first.";
-CrossTensorateSplit[varName_] := CrossTensorateSplit[#, varName] &;
-CrossTensorateSplit[xtens_Association, varName_] :=
-    Block[{aVars = KeyDrop[xtens, "XTABTensor"], varInd, perm},
-      If[! (MemberQ[Keys[xtens], varName] && (varName != "XTABTensor")),
-        Message[CrossTensorateSplit::nvar]; Return[{}]
-      ];
-      varInd = Position[Keys[xtens], varName][[1, 1]] - 1;
-      perm = Range[2, Length[aVars]];
-      perm = Join[perm[[1 ;; varInd - 1]], {1}, perm[[varInd ;; -1]]];
-      Association@
-          MapThread[
-            Rule[#1, Join[<|"XTABTensor" -> #2|>, KeyDrop[aVars, varName]]] &,
-            {xtens[varName], # & /@ Transpose[xtens["XTABTensor"], perm]}]
+      data
     ];
 
-Clear[CrossTabulate]
-
-CrossTabulate::narr = "The first argument is expected to be an array with two or three columns.
-If present the third column is expected to be numerical."
-
-CrossTabulate[ data_Dataset ] :=
-    Block[{colKeys},
-      colKeys = Normal[ data[[1]] ];
-      If[ MatchQ[colKeys, _Association],
-        CrossTabulate[ Normal[data[All, Values]] ],
-        CrossTabulate[ Normal[data] ]
-      ]
-    ]/; Length[Dimensions[data]]==2;
-
-CrossTabulate[ arr_?MatrixQ ] :=
-    Block[{idRules,t},
-      idRules = Table[(t=Union[arr[[All,i]]];Dispatch@Thread[t->Range[Length[t]]]), {i,Min[2,Dimensions[arr][[2]]]}];
-      Which[
-        Dimensions[arr][[2]]==2,
-        t = { SparseArray[ Map[MapThread[Replace,{#[[1]],idRules}] -> #[[2]] &, Tally[arr]]],
-          Normal[#][[All,1]]&/@idRules},
-        Dimensions[arr][[2]]==3 && VectorQ[arr[[All,3]],NumericQ],
-        t = { SparseArray[
-          Map[MapThread[Replace, {#[[1]], idRules}] -> #[[2]] &,
-            Map[{#[[1, 1 ;; 2]], Total[#[[All, 3]]]} &, GatherBy[arr, Most]]]],
-          Normal[#][[All,1]]&/@idRules},
-        True,
-        Message[CrossTabulate::narr];
-        Return[{}]
-      ];
-      <| "XTABMatrix" -> t[[1]], "RowNames" -> t[[2,1]], "ColumnNames" -> t[[2,2]] |>
+(* The pattern handling is not general enough: it is only for strings. *)
+Clear[DatasetColumnNumericQ];
+Options[DatasetColumnNumericQ] = { "NotAvailablePattern" -> ( "" | "NA" | "Null" | "None"), IgnoreCase -> True};
+DatasetColumnNumericQ[data_Dataset, opts : OptionsPattern[]] :=
+    Block[{naPattern = OptionValue["NotAvailablePattern"], ignoreCase = OptionValue[IgnoreCase]},
+      Transpose[data][All, VectorQ[DeleteCases[DeleteMissing[#], (x_String /; StringMatchQ[x, naPattern, IgnoreCase -> ignoreCase])], NumericQ] &]
     ];
 
-Clear[xtabsViaRLink];
-xtabsViaRLink::norlink = "R is not installed.";
-xtabsViaRLink[data_?ArrayQ, columnNames : {_String ..}, formula_String, sparse:(False|True):False] :=
-    Block[{},
-      If[Length[DownValues[RLink`REvaluate]] == 0,
-        Message[xtabsViaRLink::norlink];
-        Return[$Failed]
-      ];
-      RLink`RSet["data", Transpose[data]];
-      If[ RLink`REvaluate["class(data)"][[1]] == "matrix",
-        RLink`REvaluate["dataDF <- as.data.frame( t(data), stringsAsFactors=F )"],
-      (*RLink`REvaluate["dataDF <- do.call( rbind.data.frame, data )"]*)
-      (*RLink`REvaluate["dataDF <- data.frame( matrix( unlist(data), nrow = " <> ToString[Length[data]] <> ", byrow = T), stringsAsFactors=FALSE)"]*)
-        RLink`REvaluate["dataDF <- as.data.frame( data, srtingsAsFactors=F )"]
-      ]
-      RLink`RSet["columnNames", columnNames];
-      RLink`REvaluate["names(dataDF)<-columnNames"];
-      RLink`REvaluate["xtabs(" <> formula <> ", dataDF, sparse = " <> If[sparse,"T","F"] <> ")"]
-    ];
 
-Clear[FromRXTabsForm];
-FromRXTabsForm[rres_RLink`RObject]:=
-    Block[{},
-      <|"XTABMatrix" -> rres[[1]],
-        "RowNames" -> ("dimnames" /. rres[[2, 3]])[[1, 1]],
-        "ColumnNames" -> ("dimnames" /. rres[[2, 3]])[[1, 2]]|>
-    ] /; (! FreeQ[rres, {"xtabs", "table"}, Infinity]);
+(***********************************************************)
+(* Automatic keys Associations                             *)
+(***********************************************************)
 
-Unprotect[Association];
+(* We use nd-1 because that includes the decimal point. *)
+Clear[ToIDString];
+ToIDString[i_Integer, nd_Integer] := ToString[NumberForm[i, {nd - 1, 0}, NumberPadding -> {"0", ""}]];
 
-MatrixForm[x_Association /; (KeyExistsQ[x, "XTABMatrix"] || KeyExistsQ[x, "XTABTensor"])] ^:=
-    (MatrixForm[#1, TableHeadings -> Rest[{##}]] & @@ x);
+Clear[ToAutomaticKeysAssociation];
+ToAutomaticKeysAssociation[ ls_List, prefix_String : "id." ] :=
+    AssociationThread[ Map[ prefix <> ToIDString[#, Ceiling[Log10[Length[ls]]] + 1] &, Range[Length[ls]]], ls ];
 
-MatrixPlot[
-  x_Association /; (KeyExistsQ[x, "XTABMatrix"] || KeyExistsQ[x, "XTABTensor"]), opts___] ^:=
-    (MatrixPlot[#1,
-      Append[{opts}, FrameLabel -> {{Keys[x][[2]], None}, {Keys[x][[3]], None}}]] & @@ x);
-
-Protect[Association];
-
-End[]
+End[];
 
 EndPackage[]

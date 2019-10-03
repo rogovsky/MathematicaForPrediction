@@ -82,14 +82,14 @@ TSPSRCorrelationNNs <- function( timeSeriesMat, smr, itemIDtoNameRules, searchRo
 
     recVec <- cor( as.matrix( t(timeSeriesMat) ), searchVector, method = method )
     recVec <- recVec[ order(-recVec[,1]), ,drop=FALSE]
-    recsItemSplit <- setNames( as.data.frame( str_split_fixed( rownames(recVec), pattern = ":", n = 2 ), stringsAsFactors = F), c( "channel", "itemId" ) )
-    if( mean( nchar( recsItemSplit$itemId ) ) < 1 ) {
-      recsItemSplit <- data.frame( channel = "None", itemId = rownames(recVec), stringsAsFactors = FALSE)
+    recsItemSplit <- setNames( as.data.frame( str_split_fixed( rownames(recVec), pattern = ":", n = 2 ), stringsAsFactors = F), c( "Channel", "ItemID" ) )
+    if( mean( nchar( recsItemSplit$ItemID ) ) < 1 ) {
+      recsItemSplit <- data.frame( Channel = "None", ItemID = rownames(recVec), stringsAsFactors = FALSE)
     }
     corRecs <- data.frame( Score = recVec, 
-                           channel.itemId = rownames(recVec), 
+                           Channel.ItemID = rownames(recVec),
                            recsItemSplit, 
-                           itemName = itemIDtoNameRules[ recsItemSplit$itemId ], 
+                           ItemName = itemIDtoNameRules[ recsItemSplit$ItemID ],
                            stringsAsFactors = FALSE, row.names = NULL  )
     if ( is.null(nrecs)) { corRecs } else { corRecs[ 1:nrecs, ] }
     
@@ -97,29 +97,29 @@ TSPSRCorrelationNNs <- function( timeSeriesMat, smr, itemIDtoNameRules, searchRo
     ## Use the SMR object first, and then correlations between the TS matrix rows.
 
     recs <- SMRRecommendationsByProfileVector( smr, searchVectorMat, nrecs = smr.nrecs )
-    recsItemSplit <- setNames( as.data.frame( str_split_fixed( recs$Item, pattern = ":", n = 2 ), stringsAsFactors = F), c( "channel", "itemId" ) )
-    if( mean( nchar( recsItemSplit$itemId ) ) < 1 ) {
-      recsItemSplit <- data.frame( channel = "None", itemId = recs$Item, stringsAsFactors = FALSE)
+    recsItemSplit <- setNames( as.data.frame( str_split_fixed( recs$Item, pattern = ":", n = 2 ), stringsAsFactors = F), c( "Channel", "ItemID" ) )
+    if( mean( nchar( recsItemSplit$ItemID ) ) < 1 ) {
+      recsItemSplit <- data.frame( Channel = "None", ItemID = recs$Item, stringsAsFactors = FALSE)
     }
     dotRecs <- cbind( Score = recs$Score, 
-                      channel.itemId = recs$Item, 
+                      Channel.ItemID = recs$Item,
                       recsItemSplit, 
-                      itemName = itemIDtoNameRules[ recsItemSplit$itemId ], 
+                      ItemName = itemIDtoNameRules[ recsItemSplit$ItemID ],
                       stringsAsFactors = FALSE, row.names = NULL ) 
     
     if ( method != 'dot' ) {
       
-      ## assertthat::assert_that( mean(dotRecs$channel.itemId %in% rownames(timeSeriesMat)) == 1 )
-      recVec <- cor( as.matrix( t(timeSeriesMat[ dotRecs$channel.itemId, ]) ), searchVector, method = method )
+      ## assertthat::assert_that( mean(dotRecs$Channel.ItemID %in% rownames(timeSeriesMat)) == 1 )
+      recVec <- cor( as.matrix( t(timeSeriesMat[ dotRecs$Channel.ItemID, ]) ), searchVector, method = method )
       recVec <- recVec[ order(-recVec[,1]), ,drop=FALSE]
-      recsItemSplit <- setNames( as.data.frame( str_split_fixed( rownames(recVec), pattern = ":", n = 2 ), stringsAsFactors = F), c( "channel", "itemId" ) )
-      if( mean( nchar( recsItemSplit$itemId ) ) < 1 ) {
-        recsItemSplit <- data.frame( channel = "None", itemId = rownames(recVec), stringsAsFactors = FALSE)
+      recsItemSplit <- setNames( as.data.frame( str_split_fixed( rownames(recVec), pattern = ":", n = 2 ), stringsAsFactors = F), c( "Channel", "ItemID" ) )
+      if( mean( nchar( recsItemSplit$ItemID ) ) < 1 ) {
+        recsItemSplit <- data.frame( Channel = "None", ItemID = rownames(recVec), stringsAsFactors = FALSE)
       }
       corRecs <- data.frame( Score = recVec, 
-                             channel.itemId = rownames(recVec), 
+                             Channel.ItemID = rownames(recVec),
                              recsItemSplit, 
-                             itemName = itemIDtoNameRules[ recsItemSplit$itemId ], 
+                             ItemName = itemIDtoNameRules[ recsItemSplit$ItemID ],
                              stringsAsFactors = FALSE, row.names = NULL  )      
       if ( is.null(nrecs)) { corRecs } else { corRecs[ 1:nrecs, ] }
       
@@ -169,7 +169,7 @@ Recommendations.TSCorrSMR <- function( x, historyItems, historyRatings, nrecs, r
                                nrecs = nrecs + if( removeHistory ) { length(historyItems) } else { 0 },
                                smr.nrecs = x$SMRNRecs, 
                                method = x$CorrelationMethod )
-  names(recs) <- gsub( "itemName", "Item", names(recs) )
+  names(recs) <- gsub( "ItemName", "Item", names(recs) )
 
   recs <- recs[ , c("Score", "Item") ]
   if ( removeHistory ) {
@@ -200,7 +200,7 @@ ClassifyByProfileVector.TSCorrSMR <- function ( x, profileVec, nTopNNs, voting =
                                smr.nrecs = x$SMRNRecs, 
                                method = x$CorrelationMethod )
   
-  names(recs) <- gsub( "itemName", "Item", names(recs) )
+  names(recs) <- gsub( "ItemName", "Item", names(recs) )
   
   ## This code is copied from SMRClassifyByProfileVector -- 
   ##  read the comments in that code.
@@ -215,3 +215,50 @@ ClassifyByProfileVector.TSCorrSMR <- function ( x, profileVec, nTopNNs, voting =
   s[ order(-s[,1]), ] 
 }
 
+
+##===========================================================
+## Time series search vectors
+##===========================================================
+#' @description Creates a list of search vectors for a given matrix.
+#' @param tsMat a sparse matrix with rows corresponding to time series
+MakeTimeSeriesSearchVectors <- function( tsMat ) {
+  
+  ## Search for trends
+  tsSearchVectors <- c()
+  
+  ## Straight ascending line
+  searchVector <- ( 1:ncol(tsMat) ) / ncol(tsMat)
+  tsSearchVectors <- c( tsSearchVectors, list(StraightUp = searchVector) )
+  
+  ## Straight descending line
+  searchVector <- seq( ncol(tsMat), 1, -1 ) / ncol(tsMat)
+  tsSearchVectors <- c( tsSearchVectors, list(StraightDown = searchVector) )
+  
+  ## Increasing in the last half
+  searchVector <- ( 1:ncol(tsMat) ) - ( ncol(tsMat) / 2 ); searchVector[ searchVector < 0 ] <- 0
+  searchVector <- searchVector / ncol(tsMat)
+  tsSearchVectors <- c( tsSearchVectors, list(SecondHalfUp = searchVector) )
+  
+  ## Decreasing in first half, increasing in the last half
+  searchVector1 <- ( 1:ncol(tsMat) ) - ( ncol(tsMat) / 2 ); searchVector1[ searchVector1 < 0 ] <- 0
+  searchVector2 <- rev( 1:ncol(tsMat) ) - ( ncol(tsMat) / 2 ); searchVector2[ searchVector2 < 0 ] <- 0
+  searchVector <- searchVector1 + searchVector2
+  searchVector <- searchVector / ncol(tsMat)
+  tsSearchVectors <- c( tsSearchVectors, list(DownAndUp = searchVector) )
+  
+  ## Decreasing in first half, increasing in the last half
+  tsSearchVectors <- c( tsSearchVectors, list(UpAndDown = (-searchVector) + max(searchVector) ) )
+  
+  ## Sin
+  searchVector <- sin( 1:ncol(tsMat) / ( 1.5 * 10 ) )
+  searchVector <- searchVector + 1
+  tsSearchVectors <- c( tsSearchVectors, list(Sin = searchVector) )
+  
+  
+  ## Cos
+  searchVector <- 1-cos( 1:ncol(tsMat) / ( 1.5 * 10 ) )
+  searchVector <- searchVector + 1
+  tsSearchVectors <- c( tsSearchVectors, list(Cos = searchVector) )
+
+  tsSearchVectors
+}

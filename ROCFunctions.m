@@ -162,7 +162,22 @@
 
 (*
 
-  TODO:
+    # Update March-April 2018
+
+    I added the function ROCValues that corresponds in spirit to the function ROCValues in the file:
+
+      https://github.com/antononcube/MathematicaForPrediction/blob/master/R/VariableImportanceByClassifiers.R .
+
+    In R because we can get from most classifiers matrices with named columns that correspond to the class labels
+    and entries that correspond to the probabilities for those class labels. (The rows correspond to the test records.)
+
+    In Mathematica the build-in classifiers can return lists of Association objects (using the "Probabilities" property.)
+    These lists can easily be turned into Dataset objects that have named columns.
+
+    Hence ROCValues below is based on Dataset objects.
+
+    I also added the Association key "ROCParameter" to the ROC Associations objects. This makes the use ROCPlot
+    easier in many cases.
 
 *)
 
@@ -186,8 +201,18 @@ ROCPlot::usage = "Makes a standard ROC plot for specified parameter list and cor
 ROCPlot takes all options of Graphics and additional options for \
 ROC points size, color, callouts, tooltips, and joining. \
 The allowed signatures are: \
-\nROCPlot[ parVals:{_?NumericQ..}, aROCs:{_?ROCAssociationQ..}, opts]
-\nROCPlot[ xFuncName_String, yFuncName_String, parVals:{_?NumericQ..}, aROCs:{_?ROCAssociationQ..}, opts]"
+\nROCPlot[ aROCs:{_?ROCAssociationQ..}, opts] \
+\nROCPlot[ parVals:({_?NumericQ..}|Automatic), aROCs:{_?ROCAssociationQ..}, opts] \
+\nROCPlot[ xFuncName_String, yFuncName_String, aROCs:{_?ROCAssociationQ..}, opts] \
+\nROCPlot[ xFuncName_String, yFuncName_String, parVals:({_?NumericQ..}|Automatic), aROCs:{_?ROCAssociationQ..}, opts]"
+
+ROCValues::usage = "ROCValues[predictionProbabilities_Dataset, actualLabels_List, thRange_?VectorQ ] \
+computes ROC associations (for ROCPlot)."
+
+ToClassifyROCCurvePlot::usage = "Changes the style of ROCPlot plots. (Experimental.)"
+
+ConfusionMatrixPlot::usage = "ConfusionMatrixPlot[ aROC_?ROCAssociationQ, labelNames: {yesLabel_, noLabel_}
+plots a confusion matrix based on a ROC association."
 
 Begin["`Private`"]
 
@@ -198,18 +223,18 @@ or a list of an atomic label and a list of atomic labels."
 
 ToROCAssociation::nvecs = "The the second and third arguments are expected to be vectors of the same length."
 
-ToROCAssociation::sgntrs = "The alllowed signatures are one of : \
+ToROCAssociation::sgntrs = "The allowed signatures are one of : \
 \nToROCAssociation[ {trueLabel_?AtomQ, falseLabel:(_?AtomQ|{_?AtomQ..})}, actualLabels_, predictedLabels_ ] , \
 \nToROCAssociation[ {trueLabel_?AtomQ, falseLabel_?AtomQ}, apfAssoc_Association] ."
 
 ToROCAssociation[ {trueLabel_, falseLabel_}, actualLabels_List, predictedLabels_List ] :=
     Block[{ra,localFalseLabel, flRules},
       If[ ! ( AtomQ[trueLabel] && ( AtomQ[falseLabel] || MatchQ[falseLabel,{_?AtomQ..}] ) ),
-        Message[ToROCAssociation::nalbl]
+        Message[ToROCAssociation::nalbl];
         Return[$Failed]
       ];
       If[ ! ( VectorQ[actualLabels] && VectorQ[predictedLabels] && Length[actualLabels] == Length[predictedLabels] ),
-        Message[ToROCAssociation::nvecs]
+        Message[ToROCAssociation::nvecs];
         Return[$Failed]
       ];
       If[ AtomQ[falseLabel],
@@ -243,38 +268,74 @@ ROCAssociationQ[ obj_ ] :=
         Length[Intersection[Keys[obj],{"TruePositive","FalsePositive","TrueNegative","FalseNegative"}]] == 4;
 
 TPR[rocAssoc_?ROCAssociationQ] := (rocAssoc["TruePositive"])/(rocAssoc["TruePositive"] + rocAssoc["FalseNegative"]);
+TPR[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[TPR, rocs];
 
 SPC[rocAssoc_?ROCAssociationQ] := (rocAssoc["TrueNegative"])/(rocAssoc["FalsePositive"] + rocAssoc["TrueNegative"]);
+SPC[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[SPC, rocs];
 
 PPV[rocAssoc_?ROCAssociationQ] := (rocAssoc["TruePositive"])/(rocAssoc["TruePositive"] + rocAssoc["FalsePositive"]);
+PPV[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[PPV, rocs];
 
 NPV[rocAssoc_?ROCAssociationQ] := (rocAssoc["TrueNegative"])/(rocAssoc["TrueNegative"] + rocAssoc["FalseNegative"]);
+NPV[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[NPV, rocs];
 
 FPR[rocAssoc_?ROCAssociationQ] := (rocAssoc["FalsePositive"])/(rocAssoc["FalsePositive"] + rocAssoc["TrueNegative"]);
+FPR[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[FPR, rocs];
 
 FDR[rocAssoc_?ROCAssociationQ] := (rocAssoc["FalsePositive"])/(rocAssoc["FalsePositive"] + rocAssoc["TruePositive"]);
+FDR[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[FDR, rocs];
 
 FNR[rocAssoc_?ROCAssociationQ] := (rocAssoc["FalseNegative"])/(rocAssoc["FalseNegative"] + rocAssoc["TruePositive"]);
+FNR[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[FNR, rocs];
 
 ACC[rocAssoc_?ROCAssociationQ] := (rocAssoc["TruePositive"] + rocAssoc["TrueNegative"]) / Total[Values[rocAssoc]];
+ACC[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[ACC, rocs];
+
+FOR[rocAssoc_?ROCAssociationQ] := 1 - NPV[rocAssoc];
+FOR[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[FOR, rocs];
+
+F1[rocAssoc_?ROCAssociationQ] := 2 * PPV[rocAssoc] * TPR[rocAssoc] / ( PPV[rocAssoc] + TPR[rocAssoc] );
+F1[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[F1, rocs];
 
 AUROC[pROCs:{_?ROCAssociationQ..}] :=
     Total[Partition[ Sort@Transpose[{ROCFunctions["FPR"] /@ pROCs, ROCFunctions["TPR"] /@ pROCs}], 2, 1]
         /. {{x1_, y1_}, {x2_, y2_}} :> (x2 - x1) (y1 + (y2 - y1)/2)];
+AUROC[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[AUROC, rocs];
+
+MCC[rocAssoc_?ROCAssociationQ] :=
+    Block[{tp, tn, fp, fn, tpfp, tpfn, tnfp, tnfn},
+
+      {tp, tn, fp, fn} = Through[ { TPR, SPC, FPR, FNR}[rocAssoc] ];
+      {tpfp, tpfn, tnfp, tnfn} = Map[ If[#==0, 1,#]&, { tp + fp, tp + fn, tn + fp, tn + fn }];
+
+      (tp*tn - fp*fn) / Sqrt[ tpfp * tpfn * tnfp * tnfn ]
+    ];
+MCC[rocs : ({_?ROCAssociationQ..} | <|_?ROCAssociationQ..|> )] := Map[MCC, rocs];
 
 
 aROCAcronyms =
     AssociationThread[
-      {"TPR", "SPC", "PPV", "NPV", "FPR", "FDR", "FNR", "ACC", "AUROC", "Recall", "Precision", "Accuracy"} ->
-        {"true positive rate", "specificity", "positive predictive value",
-          "negative predictive value", "false positive rate",
-          "false discovery rate", "false negative rate", "accuracy", "area under the ROC curve",
-          "same as TPR", "same as PPV", "same as ACC"}];
+      {"TPR", "TNR", "SPC", "PPV", "NPV", "FPR", "FDR", "FNR", "ACC", "AUROC", "FOR",
+        "F1", "MCC", "Recall", "Precision", "Accuracy", "Sensitivity"},
+      {"true positive rate", "true negative rate", "specificity", "positive predictive value",
+        "negative predictive value", "false positive rate",
+        "false discovery rate", "false negative rate", "accuracy", "area under the ROC curve", "false omission rate",
+        "F1 score", "Matthews correlation coefficient",
+        "same as TPR", "same as PPV", "same as ACC", "same as TPR"}
+    ];
 
 aROCFunctions =
-    AssociationThread[
-      {"TPR", "SPC", "PPV", "NPV", "FPR", "FDR", "FNR", "ACC", "AUROC", "Recall", "Precision", "Accuracy"} ->
-          {TPR,SPC,PPV,NPV,FPR,FDR,FNR,ACC,AUROC,TPR,PPV,ACC}];
+    Join[
+      AssociationThread[
+        {"TPR", "TNR", "SPC", "PPV", "NPV", "FPR", "FDR", "FNR", "ACC", "AUROC", "FOR", "F1", "MCC"},
+        {TPR, SPC, SPC, PPV, NPV, FPR, FDR, FNR, ACC, AUROC, FOR, F1, MCC}],
+      AssociationThread[
+        {"Recall", "Sensitivity", "Precision", "Accuracy", "Specificity",
+          "FalsePositiveRate", "TruePositiveRate", "FalseNegativeRate", "TrueNegativeRate", "FalseDiscoveryRate",
+          "FalseOmissionRate", "F1Score", "AreaUnderROCCurve", "MatthewsCorrelationCoefficient" },
+        {TPR, TPR, PPV, ACC, SPC, FPR, TPR, FNR, SPC, FDR, FOR, F1, AUROC, MCC }
+      ]
+    ];
 
 
 Clear[ROCFunctions]
@@ -282,43 +343,99 @@ ROCFunctions["Methods"] := {"FunctionInterpretations", "FunctionNames", "Functio
 ROCFunctions["Properties"] := ROCFunctions["Methods"];
 ROCFunctions["FunctionNames"] := Keys[aROCAcronyms];
 ROCFunctions["FunctionInterpretations"] := aROCAcronyms;
-ROCFunctions["Functions"] := {TPR,SPC,PPV,NPV,FPR,FDR,FNR,ACC,AUROC};
-ROCFunctions[] := Evaluate[ROCFunctions["Functions"]];
+ROCFunctions["FunctionsAssociation"] := aROCFunctions;
+ROCFunctions["Functions"] := Union[Values[aROCFunctions]];
+ROCFunctions[] := Evaluate[ROCFunctions["FunctionsAssociation"]];
 ROCFunctions[fnames:{_String..}] := aROCFunctions/@fnames;
 ROCFunctions[fname_String] := aROCFunctions[fname];
 
 Clear[ROCPlot]
 
+ROCPlot::apv = "The parameter values are specified as Automatic, but extracting \"ROCParameter\" from the ROC data\
+ did not produce a numerical vector."
+
 Options[ROCPlot] =
     Join[ {"ROCPointSize"-> 0.02, "ROCColor"-> Lighter[Blue], "ROCPointColorFunction" -> Automatic,
-      "ROCPointTooltips"->True, "ROCPointCallouts"->True, "PlotJoined" -> False }, Options[Graphics]];
+           "ROCPointTooltips"->True, "ROCPointCallouts"->True, "ROCCurveColorFunction" -> Automatic,
+           "PlotJoined" -> True }, Options[Graphics]];
 
-ROCPlot[ parVals:{_?NumericQ..}, aROCs:{_?ROCAssociationQ..}, opts:OptionsPattern[]] :=
+ROCSpecQ[arg_] :=
+    MatchQ[ arg, {_?ROCAssociationQ..} | {{_?ROCAssociationQ..}..} | Association[ (_->{_?ROCAssociationQ..})..] ];
+
+ROCPlot[ aROCs_?ROCSpecQ, opts:OptionsPattern[]] :=
+    ROCPlot[ "FPR", "TPR", Automatic, aROCs, opts];
+
+ROCPlot[ parVals:{_?NumericQ..}, aROCs_?ROCSpecQ, opts:OptionsPattern[]] :=
     ROCPlot[ "FPR", "TPR", parVals, aROCs, opts];
+
+ROCPlot[ xFuncName_String, yFuncName_String, aROCs_?ROCSpecQ, opts:OptionsPattern[]] :=
+    ROCPlot[ xFuncName, yFuncName, Automatic, aROCs, opts];
 
 ROCPlot[
   xFuncName_String, yFuncName_String,
-  parVals:{_?NumericQ..},
-  aROCs:{_?ROCAssociationQ..}, opts:OptionsPattern[]] :=
-    Block[{xFunc, yFunc, psize, rocc, pt, pc, pj, pja, rocpcf, points},
+  parValsArg : (Automatic | {_?NumericQ..}),
+  aROCs : {{_?ROCAssociationQ..}..}, opts : OptionsPattern[]] :=
+      ROCPlot[ xFuncName, yFuncName, parValsArg, AssociationThread[ Range[Length[aROCs]], aROCs], opts ];
+
+ROCPlot[
+  xFuncName_String, yFuncName_String,
+  parValsArg : (Automatic | {_?NumericQ..}),
+  aROCs : Association[ (_->{_?ROCAssociationQ..}) .. ], opts : OptionsPattern[]] :=
+      Block[{rocCurveColorFunc, cls, grs},
+
+        rocCurveColorFunc = OptionValue[ROCPlot, "ROCCurveColorFunction"];
+        If[ TrueQ[rocCurveColorFunc === Automatic],
+          rocCurveColorFunc = ColorData["DarkBands", "ColorFunction"];
+        ];
+
+        cls =  rocCurveColorFunc /@ Rescale[Range[Length[aROCs]]];
+        grs = MapThread[ ROCPlot[xFuncName, yFuncName, #2, opts, "PlotJoined" -> True, "ROCColor" -> #3 ] &, {Keys[aROCs], Values[aROCs], cls}];
+        Legended[Show[grs], SwatchLegend[cls, Keys[aROCs]]]
+      ];
+
+ROCPlot[
+  xFuncName_String, yFuncName_String,
+  parValsArg : (Automatic | {_?NumericQ..}),
+  aROCs : {_?ROCAssociationQ..}, opts : OptionsPattern[]] :=
+    Block[{xFunc, yFunc, psize, rocc, pt, pc, pj, rocpcf, points, parVals=parValsArg, pred},
+
       psize = OptionValue["ROCPointSize"];
       rocc = OptionValue["ROCColor"];
       rocpcf = OptionValue["ROCPointColorFunction"];
       {pt, pc, pj} = TrueQ[OptionValue[#]] & /@ { "ROCPointTooltips", "ROCPointCallouts", "PlotJoined" };
-      pja = TrueQ[OptionValue["PlotJoined"]===Automatic];
+      pj = pj || !pj && TrueQ[OptionValue["PlotJoined"]===Automatic];
+
       {xFunc, yFunc} = ROCFunctions[{xFuncName, yFuncName}];
+
       points = Map[Through[{xFunc,yFunc}[#1]] &, aROCs];
+
+      If[TrueQ[parVals===Automatic], parVals = Map[#["ROCParameter"]&,aROCs] ];
+      If[ !VectorQ[parVals,NumericQ],
+        Message[ROCPlot::apv];
+        Return[$Failed]
+      ];
+
+      pred = Map[VectorQ[#,NumericQ]&, points ];
+      points = Pick[points, pred];
+      parVals = Pick[parVals, pred];
+
       Graphics[{
-        If[pja, {Lighter[rocc],Line[points]},{}],
+        If[pj, {Lighter[rocc],Line[points]},{}],
+
         PointSize[psize], rocc,
+
+        If[pj, Line[points]],
+
         If[ TrueQ[rocpcf===Automatic] || pj,
           Which[
-            pt && !pj,
+            pt,
             MapThread[Tooltip[Point[#1], #2] &, {points, parVals}],
-            !pt && !pj,
+
+            !pt,
             Point[points],
+
             True,
-            Line[points]
+            Nothing
           ],
           (*ELSE*)
           Which[
@@ -328,20 +445,127 @@ ROCPlot[
             MapThread[{rocpcf[#1,#2,#3],Point[#]}&, {points, parVals, Range[Length[points]]}]
           ]
         ],
+
         Black,
+
         If[ pc,
           MapThread[
-            Text[#2, Through[{xFunc,yFunc}[#1]], {-1, 2}] &, {aROCs, parVals}],
+            Text[#2, #1, {-1, 2}] &, {points, parVals}],
           {}
         ]},
+
         AspectRatio -> 1, Frame -> True,
+
         FrameLabel ->
-            Map[Style[#<>", "<>ROCFunctions["FunctionInterpretations"][#], Larger, Bold] &, {xFuncName,yFuncName}],
+            Map[Style[StringRiffle[{#, Lookup[ROCFunctions["FunctionInterpretations"], #, Nothing]}, ", "], Larger, Bold] &, {xFuncName,yFuncName}],
+
         DeleteCases[{opts},
           ( "ROCPointSize" | "ROCColor" | "ROCPointColorFunction" |
-            "ROCPointTooltips" | "ROCPointCallouts" | "PlotJoined") -> _ ]
+            "ROCPointTooltips" | "ROCPointCallouts" | "ROCCurveColorFunction" | "PlotJoined") -> _ ]
       ]
-    ]/; Length[parVals] == Length[aROCs];
+    ] /; Length[parValsArg] == Length[aROCs] || TrueQ[parValsArg===Automatic];
+
+
+Clear[ROCValues]
+
+ROCValues::nrng = "The range argument is expected to be a list of numbers between 0 and 1."
+
+ROCValues::nlen = "The prediction probabilities Dataset object and the actual labels (the first and second arguments) \
+are expected to have equal lengths."
+
+ROCValues::nlbl = "The value of \"ClassLabel\" is expected to be one of the columns of the first argument."
+
+ROCValues::args = "The arguments are expected to be a predictions probabilities Dataset, \
+a list of actual labels, and threshold range."
+
+Options[ROCValues] = {"ClassLabel"->Automatic};
+
+ROCValues[clRes_Dataset, testLabels_List, opts:OptionsPattern[]] :=
+    ROCValues[clRes, testLabels, Range[0, 1, 0.05], opts];
+
+ROCValues[predictionProbabilities_Dataset, actualLabels_List, thRange_?VectorQ, opts:OptionsPattern[]] :=
+    Block[{ focusClassLabel, classLabels, predictedLabels, rocRes, mainLabel, notMainLabel, modifiedActualLabels},
+
+      If[ Length[predictionProbabilities] != Length[actualLabels],
+        Message[ROCValues::nlen];
+        $Failed
+      ];
+
+      If[ ! ( VectorQ[ thRange, NumberQ] && Apply[And, Map[1 >= # >= 0&, thRange] ] ),
+        Message[ROCValues::nrng];
+        $Failed
+      ];
+
+      focusClassLabel = OptionValue[ROCValues, "ClassLabel"];
+      If[ TrueQ[focusClassLabel===Automatic],
+        focusClassLabel = First @ Normal @ Keys[predictionProbabilities[1]]
+      ];
+
+      If[ !MemberQ[Normal @ Keys[predictionProbabilities[1]], focusClassLabel ],
+        Message[ROCValues::nlbl];
+        $Failed
+      ];
+
+      mainLabel = ToString[focusClassLabel];
+      notMainLabel = "Not-"<>mainLabel;
+      modifiedActualLabels = If[ # == mainLabel, #, notMainLabel]& /@ actualLabels;
+
+      (*This is no longer actual: classLabels = Normal[Keys[predictionProbabilities[1]]];*)
+      classLabels = {mainLabel,notMainLabel};
+
+      Table[
+        predictedLabels =
+            Normal @ predictionProbabilities[All, If[#[[1]] >= th, mainLabel, notMainLabel] &];
+
+        rocRes = ToROCAssociation[classLabels, modifiedActualLabels, predictedLabels];
+        If[ AssociationQ[rocRes],
+          Join[<|"ROCParameter" -> th|>, rocRes],
+          $Failed
+        ]
+        , {th, thRange}]
+    ];
+
+ROCValues[___] :=
+    Block[{},
+      Message[ROCValues::args];
+      $Failed
+    ];
+
+Clear[ToClassifyROCCurvePlot];
+ToClassifyROCCurvePlot[gr_] :=
+    Block[{cols, pFunc},
+      pFunc[x_, {cedge_RGBColor, cface_RGBColor}] := {EdgeForm[cedge], FaceForm[{cface, Opacity[0.34]}], Polygon[x]};
+      cols = Cases[gr, _RGBColor, Infinity];
+      gr /. {Line[x__] -> pFunc[x, {Darker[Blue], LightBlue}], PointSize[x_] -> PointSize[0.001]}
+    ];
+
+(*
+Modified/productized version of kglr's MSE answer: https://mathematica.stackexchange.com/a/200221/34008 .
+*)
+Clear[ConfusionMatrixPlot]
+Options[ConfusionMatrixPlot] = Join[ { "Normalize" -> False }, Options[MatrixPlot] ];
+ConfusionMatrixPlot[ aROC_?ROCAssociationQ, labelNames: {yesLabel_, noLabel_}: {"True", "False"}, opts:OptionsPattern[] ] :=
+   Block[{mat, refMat, n},
+
+     mat = { {aROC["FalseNegative"], aROC["TruePositive"]}, {aROC["TrueNegative"], aROC["FalsePositive"]}};
+
+     refMat = mat;
+
+     If[ TrueQ[OptionValue[ConfusionMatrixPlot, "Normalize"]],
+       mat = N[ mat / { aROC["TruePositive"] + aROC["FalseNegative"], aROC["TrueNegative"] + aROC["FalsePositive"]} ];
+     ];
+
+     MatrixPlot[mat,
+       FilterRules[{opts}, Options[MatrixPlot]],
+       ColorRules -> {0 -> White},
+       Frame -> True,
+       FrameLabel -> {"actual", "predicted"},
+       FrameTicks ->
+           {{MapIndexed[{#2[[1]], #} &, labelNames], MapIndexed[{#2[[1]], #} &, Total@Transpose@refMat]},
+             {MapIndexed[{#2[[1]], #} &, Total[refMat]], MapIndexed[{#2[[1]], #} &, labelNames]}},
+       ColorFunction -> "Rainbow",
+       Epilog -> MapIndexed[Text[#, #2 - 1/2] &, Transpose@Reverse@mat, {2}]]
+   ];
 
 End[] (* `Private` *)
 

@@ -127,17 +127,43 @@
 (*automaticWeights*)
 (*useOutliers*)
 (*panelWidth*)
-(*panelHight*)
+(*panelHeight*)
 
 
-(* ::Subsection:: *)
-(*ItemRecommender*)
+(*=========================================================*)
+(* Import packages                                         *)
+(*=========================================================*)
 
+If[Length[DownValues[SSparseMatrix`MakeSSparseMatrix]] == 0,
+  Echo["Importing SSparseMatrix.m from GitHub...", "SparseMatrixRecommenderFramework:"];
+  Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/SSparseMatrix.m"]
+  Echo["...Done.", "SparseMatrixRecommenderFramework:"]
+];
+
+If[Length[DownValues[CrossTabulate`CrossTabulate]] == 0,
+  Echo["Importing CrossTabulate.m from GitHub...", "SparseMatrixRecommenderFramework:"];
+  Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/CrossTabulate.m"]
+  Echo["...Done.", "SparseMatrixRecommenderFramework:"]
+];
+
+If[Length[DownValues[OutlierIdentifiers`OutlierIdentifier]] == 0,
+  Echo["Importing OutlierIdentifiers.m from GitHub...", "SparseMatrixRecommenderFramework:"];
+  Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/OutlierIdentifiers.m"]
+  Echo["...Done.", "SparseMatrixRecommenderFramework:"]
+];
+
+
+(*=========================================================*)
+(* Creation                                                *)
+(*=========================================================*)
 
 Clear[ItemRecommender]
 
-
 Clear[ItemRecommenderCreation]
+
+ItemRecommenderCreation::rneq = "The row names of SSparseMatrix objects are not the same."
+ItemRecommenderCreation::niid = "The specified item variable name is not one of the column names of the dataset."
+
 ItemRecommenderCreation[id_String, smats : {_SparseArray ..},
   tagTypeNames : {_String ..}, rowNames : {_String ..},
   columnNames : {{_String ..} ..}] :=
@@ -146,10 +172,58 @@ ItemRecommenderCreation[id_String, smats : {_SparseArray ..},
       objIR["itemNames"] = rowNames;
       objIR["tagTypes"] = tagTypeNames;
       objIR["M01"] = objIR["SpliceMatrices"][smats];
+      objIR["MakeRowInterpretation"][rowNames];
       objIR["MakeColumnInterpretation"][tagTypeNames, columnNames];
       objIR["UseTagTypeWeights"][ConstantArray[1, Length[tagTypeNames]]];
       objIR
     ] /; Length[smats] == Length[tagTypeNames] == Length[columnNames];
+
+
+ItemRecommenderCreation[id_String, smats : Association[ (_ -> _SSparseMatrix) ..]] :=
+    Block[{tagTypeNames, rowNames, columnNames},
+
+      tagTypeNames = Keys[smats];
+
+      rowNames = RowNames /@ Values[smats];
+
+      If[ !(Equal @@ rowNames),
+        Message[ItemRecommenderCreation::rneq];
+        Return[$Failed]
+      ];
+
+      rowNames = First[rowNames];
+
+      columnNames = ColumnNames /@ Values[smats];
+
+      ItemRecommenderCreation[id, SparseArray /@ Values[smats], tagTypeNames, rowNames, columnNames ]
+    ];
+
+ItemRecommenderCreation[id_String, ds_Dataset, itemVarName_String ] :=
+    Block[{ncol, varNames, smats, idPos, rng},
+
+      ncol = Dimensions[ds][[2]];
+
+      varNames = Normal[Keys[ds[1]]];
+
+      idPos = Flatten[Position[varNames, itemVarName]];
+      If[ Length[idPos]==0,
+        Message[ItemRecommenderCreation::niid];
+        Return[$Failed]
+      ];
+      idPos = First[idPos];
+
+      rng = Complement[Range[ncol], {idPos}];
+
+      smats = ToSSparseMatrix /@
+          Table[CrossTabulate[ds[All, {idPos, i}]], {i, rng}];
+
+      smats = AssociationThread[Flatten[List @@ varNames[[rng]] -> smats]];
+
+      ItemRecommenderCreation[id, smats]
+    ];
+
+Clear[MakeItemRecommender]
+MakeItemRecommender = ItemRecommenderCreation;
 
 
 (* Makes the item-tag sparse martix \[Element] {0,1}^(Subscript[n, items]*Subscript[n, tags]) *)
@@ -163,7 +237,7 @@ ItemRecommender[d___]["MakeW"][weights_?VectorQ]:=
     Block[{},
       ItemRecommender[d]["W"]=SparseArray[DiagonalMatrix[weights]]
     ];
-ItemRecommender[d___]["MakeWeightMatrix"][weights:{_?NumberQ...}]:=ItemRecommender[d]["MakeW"];
+ItemRecommender[d___]["MakeWeightMatrix"][weights:{_?NumericQ...}]:=ItemRecommender[d]["MakeW"];
 
 
 ItemRecommender[d___]["UseWeights"][weights_?VectorQ]:=
@@ -173,13 +247,13 @@ ItemRecommender[d___]["UseWeights"][weights_?VectorQ]:=
     ]/;Length[weights]==Dimensions[ItemRecommender[d]["M01"]][[2]];
 
 
-ItemRecommender[d___]["UseTagTypeWeights"][tagTypeWeights:{_?NumberQ...}]:=
+ItemRecommender[d___]["UseTagTypeWeights"][tagTypeWeights:{_?NumericQ...}]:=
     Block[{weights},
-      weights=Flatten@
+      weights = Flatten@
           Table[
             ConstantArray[tagTypeWeights[[i]],
               ItemRecommender[d]["tagTypeIndexOffsets"][[i+1]]-ItemRecommender[d]["tagTypeIndexOffsets"][[i]]
-            ],{i,Length[tagTypeWeights]}];
+            ], {i,Length[tagTypeWeights]}];
       weights=SparseArray[weights];
       ItemRecommender[d]["UseWeights"][weights];
     ]/;Length[tagTypeWeights]==Length[ItemRecommender[d]["tagTypes"]];
@@ -202,11 +276,14 @@ ItemRecommender[d___]["MakeColumnInterpretation"][tagTypes:{_String...},tagsList
       ItemRecommender[d]["ColumnInterpretation"]=Join@@tagsLists;
       ItemRecommender[d]["columnIndexToTagRules"]=Dispatch[Thread[Range[1,len]->Flatten[tagsLists,1]]];
       ItemRecommender[d]["tagToColumnIndexRules"]=Dispatch[Thread[Flatten[tagsLists,1]->Range[1,len]]];
+      ItemRecommender[d]["aColumnIndexToTagRules"] = AssociationThread[ Range[1,len], Flatten[tagsLists,1] ];
+      ItemRecommender[d]["aTagToColumnIndexRules"] = AssociationThread[ Flatten[tagsLists,1], Range[1,len] ];
       (* name alias *)
       ItemRecommender[d]["columnIndexInterpretationRules"]:=ItemRecommender[d]["columnIndexToTagRules"];
       (* global-local column indexes rules *)
       offsets=FoldList[Plus,0,Length/@tagsLists];
       ItemRecommender[d]["tagTypeIndexOffsets"]=offsets;
+      ItemRecommender[d]["tagTypeRanges"] = AssociationThread[tagTypes, Transpose[{Most[offsets]+1, Rest[offsets]}]];
       ItemRecommender[d]["TypeFunction"]=With[{w=Which@@Flatten[Map[Function[{arg},{#>arg[[1]],arg[[2]]}],Transpose[{Rest[Reverse@offsets],Reverse@tagTypes}]]]},
         Function[w]
       ];
@@ -219,8 +296,11 @@ ItemRecommender[d___]["MakeColumnInterpretation"][tagTypes:{_String...},tagsList
 ItemRecommender[d___]["MakeRowInterpretation"][rowIDs:{(_Integer|_String)..}]:=
     Block[{},
       ItemRecommender[d]["RowIDs"]=rowIDs;
+      ItemRecommender[d]["itemNames"]=rowIDs; (* Note the redundancy of names here!*)
       ItemRecommender[d]["RowIDToIndexRules"]=Dispatch[Thread[rowIDs->Range[Dimensions[ItemRecommender[d]["M01"]][[1]]]]];
       ItemRecommender[d]["RowIndexToIDRules"]=Dispatch[Thread[Range[Dimensions[ItemRecommender[d]["M01"]][[1]]]->rowIDs]];
+      ItemRecommender[d]["aRowIDToIndexRules"] = AssociationThread[ rowIDs, Range[Dimensions[ItemRecommender[d]["M01"]][[1]]] ];
+      ItemRecommender[d]["aRowIndexToIDRules"] = AssociationThread[ Range[Dimensions[ItemRecommender[d]["M01"]][[1]]], rowIDs ] ;
     ]/;Dimensions[ItemRecommender[d]["M01"]][[1]]==Length[rowIDs];
 
 
@@ -240,12 +320,13 @@ ItemRecommender[d___]["SetFilterMatrix"][filterTagType_String]:=
     ]/;MemberQ[ItemRecommender[d]["tagTypes"],filterTagType];
 
 
-(* ::Subsection:: *)
-(*SpliceMatrices*)
-
+(*=========================================================*)
+(* SpliceMatrices                                          *)
+(*=========================================================*)
 
 ItemRecommender[d___]["SpliceMatrices"][smats:{_SparseArray...}]:=
     ItemRecommender[d]["SpliceMatrices"][smats,ConstantArray[1,Length[smats]]];
+
 ItemRecommender[d___]["SpliceMatrices"][smats:{_SparseArray...},weights:{_?NumberQ...}]:=
     Block[{},
       SparseArray[
@@ -254,13 +335,57 @@ ItemRecommender[d___]["SpliceMatrices"][smats:{_SparseArray...},weights:{_?Numbe
     ]/;Length[smats]==Length[weights]==Length[ItemRecommender[d]["tagTypes"]];
 
 
-(* ::Subsection:: *)
-(*UserItemsToLove*)
+(*=========================================================*)
+(* SubMatrix                                               *)
+(*=========================================================*)
 
+ItemRecommender::nott = "`1`: The ItemRecommender object does not have the tag type `2`."
+
+ItemRecommender[d___]["SubMatrix"][tagType_String] :=
+    ItemRecommender[d]["SubMatrix"]["M", tagType];
+
+ItemRecommender[d___]["SubMatrix"][m:("M"|"M01"),tagType_String] :=
+    Block[{},
+
+      If[ ! KeyExistsQ[ ItemRecommender[d]["tagTypeRanges"], tagType ],
+        Message[ItemRecommender::nott, "\"SubMatrix\"", tagType ];
+        Return[$Failed]
+      ];
+
+      ItemRecommender[d][m][[ All, Range @@ ItemRecommender[d]["tagTypeRanges"][tagType] ]]
+    ];
+
+(*=========================================================*)
+(* SubSSparseMatrix                                        *)
+(*=========================================================*)
+
+ItemRecommender[d___]["SubSSparseMatrix"][tagType_String] :=
+    ItemRecommender[d]["SubSSparseMatrix"]["M", tagType];
+
+ItemRecommender[d___]["SubSSparseMatrix"][m:("M"|"M01"), tagType_String] :=
+    Block[{rng, smat},
+
+      If[ ! KeyExistsQ[ ItemRecommender[d]["tagTypeRanges"], tagType ],
+        Message[ItemRecommender::nott, "\"SubSSparseMatrix\"", tagType ];
+        Return[$Failed]
+      ];
+
+      rng = Range @@ ItemRecommender[d]["tagTypeRanges"][tagType];
+      smat = ItemRecommender[d][m][[ All, rng ]];
+
+      ToSSparseMatrix[
+        SparseArray[smat],
+        "RowNames" -> ItemRecommender[d]["itemNames"],
+        "ColumnNames" -> ItemRecommender[d]["ColumnInterpretation"][[rng]]
+      ]
+    ];
+
+(*=========================================================*)
+(* Recommendations                                         *)
+(*=========================================================*)
 
 (* ::Text:: *)
 (*The formulas we use for the version below are:*)
-
 
 (* ::DisplayFormula:: *)
 (*S=M Transpose[M]*)
@@ -268,7 +393,7 @@ ItemRecommender[d___]["SpliceMatrices"][smats:{_SparseArray...},weights:{_?Numbe
 
 
 (* ::Text:: *)
-(*This is a a specification of the algorithm below in UserItemsToLove.*)
+(*This is a a specification of the algorithm below in Recommendations.*)
 
 
 (* ::Text:: *)
@@ -278,8 +403,14 @@ ItemRecommender[d___]["SpliceMatrices"][smats:{_SparseArray...},weights:{_?Numbe
 (*4. Sort descendingly sp according to the first value of each pair. *)
 (*5. Take the indexes of the first k pairs, i.e. take sp(1:k,2).*)
 
+ItemRecommender[d___]["UserItemsToLove"][args___] := ItemRecommender[d]["Recommendations"][args];
 
-ItemRecommender[d___]["UserItemsToLove"][inputShowInds:{_Integer...},inputRatings:{_?NumberQ...},nRes_Integer, removeHistoryQ_:True]:=
+ItemRecommender[d___]["Recommendations"][ratedInds_Association, nRes_Integer, removeHistoryQ_:True] :=
+    Block[{},
+      ItemRecommender[d]["Recommendations"][Keys[ratedInds], Values[ratedInds], nRes, removeHistoryQ]
+    ];
+
+ItemRecommender[d___]["Recommendations"][inputShowInds:{_Integer...},inputRatings:{_?NumberQ...},nRes_Integer, removeHistoryQ_:True]:=
     Block[{inds,vec,maxScores,smat=ItemRecommender[d]["M"]},
     (*userMatrix=MapThread[#1*#2&,{smat\[LeftDoubleBracket]inputShowInds\[RightDoubleBracket],inputRatings},1];*)
     (*1*)
@@ -293,11 +424,14 @@ ItemRecommender[d___]["UserItemsToLove"][inputShowInds:{_Integer...},inputRating
         If[Length[#]>nRes,Take[#,nRes],#]&[Select[Transpose[{vec[[inds]],inds}],#[[1]]>0&]]
       ]
     ]/;Length[inputShowInds]==Length[inputRatings];
-ItemRecommender[d___]["UserItemsToLove"][{},_,nRes_Integer]:=
+
+ItemRecommender[d___]["Recommendations"][{},_,nRes_Integer]:=
     Block[{inds=Range[1,nRes]},Transpose[{ConstantArray[1,{Length[inds]}],inds}]];
 
 
-ItemRecommender[d___]["UserItemsToLoveByProfile"][profileInds:{_Integer...},profileScores:{_?NumberQ...},nRes_Integer]:=
+ItemRecommender[d___]["UserItemsToLoveByProfile"][args___] := ItemRecommender[d]["RecommendationsByProfile"][args];
+
+ItemRecommender[d___]["RecommendationsByProfile"][profileInds:{_Integer...},profileScores:{_?NumberQ...},nRes_Integer]:=
     Block[{inds,vec,smat=ItemRecommender[d]["M"]},
       vec=SparseArray[Thread[profileInds->profileScores],{Dimensions[smat][[2]]}];
       vec=smat.vec;
@@ -305,7 +439,8 @@ ItemRecommender[d___]["UserItemsToLoveByProfile"][profileInds:{_Integer...},prof
       (*If[Length[#]>nRes,Take[#,nRes],#]&[Select[Transpose[{vec\[LeftDoubleBracket]inds\[RightDoubleBracket],inds}],#\[LeftDoubleBracket]1\[RightDoubleBracket]>0&]]*)
       If[Length[#]>nRes,Take[#,nRes],#]&[DeleteCases[Transpose[{vec[[inds]],inds}],{0.,_}]]
     ]/;Length[profileInds]==Length[profileScores];
-ItemRecommender[d___]["UserItemsToLoveByProfile"][profileVec_SparseArray,nRes_Integer]:=
+
+ItemRecommender[d___]["RecommendationsByProfile"][profileVec_SparseArray,nRes_Integer]:=
     Block[{inds,vec,smat=ItemRecommender[d]["M"]},
       vec=smat.profileVec;
       (*inds=Most[ArrayRules[vec]]\[LeftDoubleBracket]All,1,1\[RightDoubleBracket];
@@ -315,16 +450,40 @@ If[Length[#]>nRes,Take[#,nRes],#]&[SortBy[Select[Transpose[{vec\[LeftDoubleBrack
       If[Length[#]>nRes,Take[#,nRes],#]&[DeleteCases[Transpose[{vec[[inds]],inds}],{0.,_}]]
     ]/;Dimensions[ItemRecommender[d]["M"]][[2]]==Dimensions[profileVec][[1]];
 
+ItemRecommender[d___]["RecommendationsByProfile"][tagsArg:(_Association | _List ), nRes_Integer] :=
+    Block[{profVec},
+      profVec = ItemRecommender[d]["MakeProfileVector"][tagsArg];
+      ItemRecommender[d]["RecommendationsByProfile"][ profVec, nRes ]
+    ];
+
+(*ItemRecommender[d___]["RecommendationsByProfile"][scoredTags_Association, nRes_Integer] :=*)
+    (*Block[{tagInds, t},*)
+
+      (*tagInds = Keys[scoredTags] /. ItemRecommender[d]["tagToColumnIndexRules"];*)
+
+      (*If[ VectorQ[tagInds, NumberQ],*)
+        (*ItemRecommender[d]["RecommendationsByProfile"][tagInds, Values[scoredTags]],*)
+        (*ELSE*)
+        (*Message[ItemRecommender::ntags];*)
+        (*t = Select[ Transpose[{tagInds, Values[scoredTags]}], NumberQ[#[[1]]]];*)
+        (*If[Length[t] > 0,*)
+          (*ItemRecommender[d]["RecommendationsByProfile"][t[[All,1]], t[[All,2]]],*)
+          (*ELSE*)
+          (*{}*)
+        (*]*)
+      (*]*)
+    (*];*)
 
 (* The code is almost identical to the definition above *)
-ItemRecommender[d___]["UserItemsToLoveByProfile"][rowInds:{_Integer..},profileInds:{_Integer...},profileScores:{_?NumberQ...},nRes_Integer]:=
+ItemRecommender[d___]["RecommendationsByProfile"][rowInds:{_Integer..},profileInds:{_Integer...},profileScores:{_?NumberQ...},nRes_Integer]:=
     Block[{inds,vec,smat=ItemRecommender[d]["M"][[rowInds]]},
       vec=SparseArray[Thread[profileInds->profileScores],{Dimensions[smat][[2]]}];
       vec=smat.vec;
       inds=Reverse@Ordering[vec//Normal];
       If[Length[#]>nRes,Take[#,nRes],#]&[Select[Transpose[{vec[[inds]],inds}],#[[1]]>0&]]
     ]/;Length[profileInds]==Length[profileScores];
-ItemRecommender[d___]["UserItemsToLoveByProfile"][rowInds:{_Integer..},profileVec_SparseArray,nRes_Integer]:=
+
+ItemRecommender[d___]["RecommendationsByProfile"][rowInds:{_Integer..},profileVec_SparseArray,nRes_Integer]:=
     Block[{inds,vec,smat=ItemRecommender[d]["M"][[rowInds]]},
       vec=smat.profileVec;
       inds=Reverse@Ordering[vec//Normal];
@@ -333,11 +492,13 @@ ItemRecommender[d___]["UserItemsToLoveByProfile"][rowInds:{_Integer..},profileVe
     ]/;Dimensions[ItemRecommender[d]["M"]][[2]]==Dimensions[profileVec][[1]];
 
 
-(* ::Subsection:: *)
-(*UserItemsToLoveByProfile with filtering*)
+(*=========================================================*)
+(* RecommendationsByProfile with filtering                 *)
+(*=========================================================*)
 
+ItemRecommender[d___]["UserItemsToLoveByFilterAndProfile"][args___] := ItemRecommender[d]["RecommendationsByFilterAndProfile"][args];
 
-ItemRecommender[d___]["UserItemsToLoveByFilterAndProfile"][filterInds:{_Integer..},profileInds:{_Integer...},profileScores:{_?NumberQ...},nRes_Integer,strictQ:(True|False)]:=
+ItemRecommender[d___]["RecommendationsByFilterAndProfile"][filterInds:{_Integer..},profileInds:{_Integer...},profileScores:{_?NumberQ...},nRes_Integer,strictQ:(True|False)]:=
     Block[{finds,inds,vec,maxScores,smat,fmat=ItemRecommender[d]["F"],indexArray,tf=Length[filterInds]},
       finds=filterInds/.ItemRecommender[d]["globalIndexToFilterIndexRules"];
       vec=fmat.DiagonalMatrix[SparseArray[Thread[finds->1.],{Dimensions[fmat][[1]]}]];
@@ -351,7 +512,7 @@ ItemRecommender[d___]["UserItemsToLoveByFilterAndProfile"][filterInds:{_Integer.
     ]/;Length[profileInds]==Length[profileScores]&&MatrixQ[ItemRecommender[d]["F"]]&&Dimensions[ItemRecommender[d]["F"]][[2]]==Dimensions[ItemRecommender[d]["M"]][[1]];
 
 
-ItemRecommender[d___]["UserItemsToLoveByFilterAndProfile"][filterVec_SparseArray,profileVec_SparseArray,nRes_Integer,strictQ:(True|False)]:=
+ItemRecommender[d___]["RecommendationsByFilterAndProfile"][filterVec_SparseArray,profileVec_SparseArray,nRes_Integer,strictQ:(True|False)]:=
     Block[{finds,inds,vec,maxScores,smat,fmat=ItemRecommender[d]["F"],indexArray,tf=Total[filterVec]},
       finds=Most[ArrayRules[filterVec]][[All,1,1]]/.ItemRecommender[d]["globalIndexToFilterIndexRules"];
       vec=SparseArray[Thread[finds->1.],{Dimensions[fmat][[1]]}].fmat;
@@ -365,7 +526,7 @@ ItemRecommender[d___]["UserItemsToLoveByFilterAndProfile"][filterVec_SparseArray
 
 
 (* Not an universal solution and it is only few %'s faster than the above *)
-(*ItemRecommender[d___]["UserItemsToLoveByFilterAndProfile"][filterVec_SparseArray,profileVec_SparseArray,nRes_Integer]:=
+(*ItemRecommender[d___]["RecommendationsByFilterAndProfile"][filterVec_SparseArray,profileVec_SparseArray,nRes_Integer]:=
 Block[{finds,inds,vec,maxScores,smat,fmat=ItemRecommender[d]["F"],indexRules,indexArray},
 vec=filterVec[[ItemRecommender[d]["tagTypeIndexOffsets"][[2]]+1;;ItemRecommender[d]["tagTypeIndexOffsets"][[2+1]]]];
 vec=vec.fmat;
@@ -380,25 +541,33 @@ inds=Reverse@Ordering[vec//Normal];
 If[Length[#]>nRes,Take[#,nRes],#]&[Select[Transpose[{vec[[inds]],indexArray[[inds]]}],#[[1]]>0&]]
 ]/;Dimensions[filterVec][[1]]==Dimensions[profileVec][[1]]==Dimensions[ItemRecommender[d]["M"]][[2]]&&MatrixQ[ItemRecommender[d]["F"]]&&Dimensions[ItemRecommender[d]["F"]][[2]]==Dimensions[ItemRecommender[d]["M"]][[1]];*)
 
+(*=========================================================*)
+(* UserProfile                                             *)
+(*=========================================================*)
 
-(* ::Subsection:: *)
-(*UserProfile*)
+ItemRecommender::notag = "`1`: Some of the specified tags are not known in the ItemRecommender object."
 
+ItemRecommender[d___]["UserProfileVector"][args___] := ItemRecommender[d]["ProfileVector"][args];
 
-ItemRecommender[d___]["UserProfileVector"][inputShowInds:{_Integer...}]:=
-    ItemRecommender[d]["UserProfileVector"][inputShowInds,ConstantArray[1.,Length[inputShowInds]]];
-ItemRecommender[d___]["UserProfileVector"][inputShowInds:{_Integer...},inputRatings:{_?NumberQ...}]:=
+ItemRecommender[d___]["ProfileVector"][inputShowInds:{_Integer...}]:=
+    ItemRecommender[d]["ProfileVector"][inputShowInds,ConstantArray[1.,Length[inputShowInds]]];
+
+ItemRecommender[d___]["ProfileVector"][inputShowInds:{_Integer...},inputRatings:{_?NumberQ...}]:=
     Block[{vec,smat=ItemRecommender[d]["M"]},
       vec=SparseArray[Thread[inputShowInds->inputRatings],{smat//Length}];
       vec.smat
     ]/;Length[inputShowInds]==Length[inputRatings];
 
 
-ItemRecommender[d___]["UserProfile"][inputShowInds:{_Integer...}]:=
-    ItemRecommender[d]["UserProfile"][inputShowInds,ConstantArray[1.,Length[inputShowInds]]];
-ItemRecommender[d___]["UserProfile"][inputShowInds:{_Integer...},inputRatings:{_?NumberQ...}]:=
+ItemRecommender[d___]["UserProfile"][args___] := ItemRecommender[d]["Profile"][args];
+
+
+ItemRecommender[d___]["Profile"][inputShowInds:{_Integer...}]:=
+    ItemRecommender[d]["Profile"][inputShowInds,ConstantArray[1.,Length[inputShowInds]]];
+
+ItemRecommender[d___]["Profile"][inputShowInds:{_Integer...},inputRatings:{_?NumberQ...}]:=
     Block[{inds,vec},
-      vec=ItemRecommender[d]["UserProfileVector"][inputShowInds,inputRatings];
+      vec=ItemRecommender[d]["ProfileVector"][inputShowInds,inputRatings];
       inds=Most[ArrayRules[vec]][[All,1,1]];
       SortBy[Select[Transpose[{vec[[inds]],inds,inds/.ItemRecommender[d]["columnIndexToTagRules"]}],#[[1]]>0&],-#[[1]]&]
     ]/;Length[inputShowInds]==Length[inputRatings];
@@ -406,24 +575,232 @@ ItemRecommender[d___]["UserProfile"][inputShowInds:{_Integer...},inputRatings:{_
 
 ItemRecommender[d___]["MakeProfileVector"][tags_List]:=
     ItemRecommender[d]["MakeProfileVector"][tags,ConstantArray[1.,Length[tags]]];
+
 ItemRecommender[d___]["MakeProfileVector"][tags_List,weights_]:=
     ItemRecommender[d]["MakeProfileVector"][Thread[tags->weights]];
+
+ItemRecommender[d___]["MakeProfileVector"][aTagWeights_Association]:=
+    ItemRecommender[d]["MakeProfileVector"][Normal[aTagWeights]];
+
 ItemRecommender[d___]["MakeProfileVector"][tagWeightRules:{Rule[_,_?NumberQ]..}]:=
     Block[{t=tagWeightRules},
+
       t[[All,1]]=t[[All,1]]/.ItemRecommender[d]["tagToColumnIndexRules"];
+
+      t = Select[t, IntegerQ[#[[1]]]& ];
+
+      If[ Length[t] < Length[tagWeightRules],
+        Message[ItemRecommender::notag,"\"MakeProfileVector\""]
+      ];
+
       SparseArray[t,{Dimensions[ItemRecommender[d]["M01"]][[2]]}]
     ];
 
-ItemRecommender[d___]["UserProfileFromVector"][pvec_SparseArray] :=
+ItemRecommender[d___]["UserProfileFromVector"][args___] := ItemRecommender[d]["ProfileFromVector"][args];
+
+ItemRecommender[d___]["ProfileFromVector"][pvec_SparseArray] :=
     Block[{arules,res},
       arules = Most[ArrayRules[pvec]];
 	  res = Transpose[{arules[[All, 2]], Flatten[arules[[All, 1]]], ItemRecommender[d]["ColumnInterpretation"][[Flatten[arules[[All, 1]]]]]}];
 	  res[[Reverse[Ordering[res[[All, 1]]]]]]	  
     ] /; VectorQ[pvec];
 
-(* ::Subsection:: *)
-(*RatingPrediction*)
 
+(*=========================================================*)
+(* SMR Algebra                                             *)
+(*=========================================================*)
+
+ItemRecommender::nmcols = "`1`: The column names of the specified SSparseMatrix object are not a subset of the column names of the recommender object."
+ItemRecommender::nmtt = "`1`: The tag types of the ItemRecommender objects to be row-bound are not the same."
+
+ItemRecommender[d___]["SSparseMatrix"][m:("M"|"M01")] :=
+    Block[{},
+      ToSSparseMatrix[
+        ItemRecommender[d][m],
+        "RowNames"->ItemRecommender[d]["itemNames"],
+        "ColumnNames"->ItemRecommender[d]["ColumnInterpretation"]
+      ]
+    ];
+
+ItemRecommender[d___]["RowBind"][smat_SSparseMatrix] :=
+    Block[{bmat},
+
+      bmat = ItemRecommender[d]["SSparseMatrix"]["M01"];
+
+      Which[
+
+        ColumnNames[bmat] == ColumnNames[smat],
+        bmat = RowBind[ bmat, smat ],
+
+        Length[Complement[ ColumnNames[smat], ColumnNames[bmat] ]] == 0,
+        bmat = RowBind[ bmat, ImposeColumnNames[ smat, ColumnNames[bmat] ] ],
+
+        True,
+        Message[ItemRecommender::nmcols,"\"RowBind\""];
+        Return[$Failed]
+      ];
+
+      If[ ! TrueQ[Head[bmat]===SSparseMatrix],
+        Return[$Failed]
+      ];
+
+      ItemRecommender[d]["M01"] = SparseArray[bmat];
+
+      ItemRecommender[d]["MakeRowInterpretation"][ RowNames[bmat] ];
+
+      ItemRecommender[d]["UseTagTypeWeights"][ Table[1, {Length[ItemRecommender[d]["tagTypes"]]}] ];
+
+      ItemRecommender[d]
+    ];
+
+
+ItemRecommender[d___]["RowBind"][smr2_ItemRecommender] :=
+    Block[{smat1, smat2, t1, t2, cnames},
+
+      smat1 = ItemRecommender[d]["SSparseMatrix"]["M01"];
+
+      smat2 = smr2["SSparseMatrix"]["M01"];
+
+      Which[
+
+        ColumnNames[smat1] == ColumnNames[smat2],
+        ItemRecommender[d]["RowBind"][smat2],
+
+        ItemRecommender[d]["tagTypes"] == smr2["tagTypes"],
+        (* Separate into matrices for each tag type. *)
+        t1 = ItemRecommender[d]["SubSSparseMatrix"]["M01", #] & /@ ItemRecommender[d]["tagTypes"];
+        t2 = smr2["SubSSparseMatrix"]["M01", #] & /@ ItemRecommender[d]["tagTypes"];
+
+        (* Row bind each pair. *)
+        smat1 =
+            MapThread[
+              ( cnames = Union[Join[ColumnNames[#1], ColumnNames[#2]]];
+                RowBind[ ImposeColumnNames[#1, cnames], ImposeColumnNames[#2, cnames] ])&,
+              {t1, t2}];
+
+        MakeItemRecommender[d, AssociationThread[ ItemRecommender[d]["tagTypes"], smat1] ],
+
+        True,
+        Message[ItemRecommender::nmtt,"\"RowBind\""];
+        $Failed
+      ]
+
+    ];
+
+(*ItemRecommender[d___]["ColumnBind"][smat_SSparseMatrix] :=*)
+    (*Block[{},*)
+
+    (*];*)
+
+(*ItemRecommender[d___]["Join"][smr2_ItemRecommender] :=*)
+(*Block[{},*)
+
+(*];*)
+
+
+
+(*=========================================================*)
+(* Classify                                                *)
+(*=========================================================*)
+
+ItemRecommender[d___]["Classify"][tagType_String, tags:(_List | {_Rule..} | _Association), args___] :=
+    ItemRecommender[d]["Classify"][tagType, ItemRecommender[d]["MakeProfileVector"][tags], args];
+
+ItemRecommender[d___]["Classify"][tagType_String, tags_List, weights_List, args___] :=
+    ItemRecommender[d]["Classify"][tagType, ItemRecommender[d]["MakeProfileVector"][tags,weights], args] /; Length[tags] == Length[weights];
+
+ItemRecommender[d___]["Classify"][tagType_String, pvec_SparseArray, nTopNNs_Integer,
+  voting:(True|False):False, dropZeroScoredLabels:(True|False):True] :=
+    Block[{recs, clMat, s, t},
+      recs = ItemRecommender[d]["RecommendationsByProfile"][pvec,nTopNNs];
+
+      clMat = ItemRecommender[d]["M"][[All, Span @@ ItemRecommender[d]["tagTypeRanges"][tagType] ]];
+
+      If[ voting,
+        t = Most[ArrayRules[clMat]]; t[[All,2]] = 1;
+        clMat = SparseArray[t,Dimensions[clMat]];
+        recs[[All,1]] = 1;
+      ];
+
+      s = (recs[[All,1]] / Max[recs[[All,1]]] ) . clMat[[ recs[[All,2]], All ]];
+
+      s = AssociationThread[ ItemRecommender[d]["ColumnInterpretation"][[ Span @@ ItemRecommender[d]["tagTypeRanges"][tagType] ]] -> s ];
+
+      Reverse[Sort[s]]
+    ];
+
+(*=========================================================*)
+(* ItemRecommenderClassify                                 *)
+(*=========================================================*)
+
+Clear[ItemRecommenderClassify]
+
+Options[ItemRecommenderClassify] = {"tagType"->Automatic, "nTopNNs"->20, "voting"->False, "dropZeroScoredLabels"->True, "Normalize"->True};
+
+ItemRecommenderClassify[smr_, record_, opts : OptionsPattern[]] :=
+    ItemRecommenderClassify[smr, record, "Decision", opts] /; FreeQ[{opts}, "Score"|"TopScores"|"TopProbabilities"];
+
+ItemRecommenderClassify[smr_, record_, "Decision", opts : OptionsPattern[]] :=
+    First@Keys@ItemRecommenderClassify[smr, record, "Scores", opts];
+
+ItemRecommenderClassify[smr_, record_, "Score" -> class_, opts : OptionsPattern[]] :=
+    Lookup[ItemRecommenderClassify[smr, record, "Scores", opts], class, 0];
+
+ItemRecommenderClassify[smr_, record_, "TopScores", opts : OptionsPattern[]] :=
+    Select[ItemRecommenderClassify[smr, record, "Scores", opts], # > 0 &];
+
+ItemRecommenderClassify[smr_, record_, "TopScores" -> n_Integer, opts : OptionsPattern[]] :=
+    Take[ItemRecommenderClassify[smr, record, "Scores", opts], UpTo[n]];
+
+ItemRecommenderClassify[smr_ItemRecommender, record_, "Scores", opts:OptionsPattern[] ] :=
+    Block[{clParams, res},
+
+      If[ !AssociationQ[smr["classificationParameters"]],
+        clParams = <||>,
+        clParams = smr["classificationParameters"]
+      ];
+
+      clParams = Join[ Association[Options[ItemRecommenderClassify]], clParams, Association[{opts}] ];
+
+      If[ !MemberQ[smr["tagTypes"], clParams["tagType"] ],
+        clParams = Join[ clParams, <|"tagType"->Last[smr["tagTypes"]] |> ]
+      ];
+
+      res = smr["Classify"][clParams["tagType"], record, clParams["nTopNNs"], clParams["voting"], clParams["dropZeroScoredLabels"] ];
+
+      If[ TrueQ[clParams["Normalize"]] && TrueQ[Total[res] > 0],
+        res / Total[res],
+        res
+      ]
+    ];
+
+
+(* Here we take the perspective that the scores top two items returned as SMR recommendations *)
+(* can be used to form odds of selecting between the two. *)
+Clear[ItemRecommenderScoresToProbabilities]
+ItemRecommenderScoresToProbabilities[aScores_Association] :=
+    Block[{t, p},
+      t = Sort[aScores];
+      If[t[[1]] == 0,
+        ReverseSort@AssociationThread[Keys[t], {0, 1}],
+      (*ELSE*)
+        p = t[Keys[t][[1]]]/Total[t];
+        ReverseSort@AssociationThread[Keys[t], {p, 1 - p}]
+      ]
+    ] /; Length[aScores] == 2;
+
+ItemRecommenderScoresToProbabilities[aScores_Association] :=
+    AssociationThread[Keys[aScores] -> {1}] /; Length[aScores] == 1;
+
+ItemRecommenderClassify[smr_, record_, "TopProbabilities" -> n_Integer, opts : OptionsPattern[]] :=
+    Block[{clRes},
+      clRes = ItemRecommenderClassify[smr, record, "TopScores"->2, opts];
+      TakeLargest[ItemRecommenderScoresToProbabilities[clRes], UpTo[n]]
+    ] /; 1 <= n <= 2;
+
+(*=========================================================*)
+(* RatingPrediction                                        *)
+(*=========================================================*)
 
 (* ::Text:: *)
 (*Designate the user u viewed show indexes with {Subscript[i, 1],Subscript[i, 2],...,Subscript[i, Subscript[n, u]]} and the items recommended for the user u with {Subscript[j, 1],Subscript[j, 2],...,Subscript[j, k]}. He has the ratings {Subscript[r, u Subscript[i, 1]],...,Subscript[r, u Subscript[i, Subscript[n, u]]]}. We are using the formula:.*)
@@ -463,9 +840,9 @@ ItemRecommender[d___]["RatingPrediction"][inputShowInds:{_Integer...},inputRatin
     ];
 
 
-(* ::Section:: *)
-(*Deteriorate old ratings*)
-
+(*=========================================================*)
+(* Deteriorate old ratings                                 *)
+(*=========================================================*)
 
 (* ::Text:: *)
 (*Inherit dynamically ItemRecommender*)
@@ -485,9 +862,9 @@ ItemRecommender[d___]["RatingPrediction"][inputShowInds:{_Integer...},inputRatin
     ]/;Length[inputShowInds]==Length[inputRatings]==Length[inputTimes];
 
 
-(* ::Section:: *)
-(*Utilities*)
-
+(*=========================================================*)
+(* Utilities                                               *)
+(*=========================================================*)
 
 (* ::Subsection:: *)
 (*RowTags from the matrix*)
@@ -663,8 +1040,8 @@ InterfaceUserToLoveCalculation[irecTargetObj_ItemRecommender,irecSourceObj_ItemR
     Block[{res,loved,pvec},
       irecSourceObj["UseTagTypeWeights"][metaDataWeights];
       irecTargetObj["UseTagTypeWeights"][metaDataWeights];
-      pvec=irecSourceObj["UserProfileVector"][userInds];
-      res=irecTargetObj["UserItemsToLoveByProfile"][pvec,nResults];
+      pvec=irecSourceObj["ProfileVector"][userInds];
+      res=irecTargetObj["RecommendationsByProfile"][pvec,nResults];
       loved=Transpose[{res[[All,1]],res[[All,2]],data[[res[[All,2]]]]}];
       loved
     ]/;(userInds==={}||Length[userInds]==Length[userRatings])&&Length[irecTargetObj["tagTypes"]]==Length[metaDataWeights]&&Length[irecSourceObj["tagTypes"]]==Length[metaDataWeights];
@@ -698,9 +1075,6 @@ InterfaceUserToLoveFiltered[irecObj_ItemRecommender,toBeLoved_,uProf_]:=
 
 (* ::Subsection:: *)
 (*Outliers*)
-
-
-Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/OutlierIdentifiers.m"]
 
 
 (* ::Subsection:: *)

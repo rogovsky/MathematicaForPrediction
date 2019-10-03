@@ -30,6 +30,7 @@
 //# "Tries with frequencies for data mining",
 //# https://mathematicaforprediction.wordpress.com/2013/12/06/tries-with-frequencies-for-data-mining/ .
 
+package TriesWithFrequencies;
 
 import java.util.*;
 
@@ -107,7 +108,7 @@ public class TrieFunctions {
         );
     }
 
-    //! @description Slits each string of a list of string using a given regex.
+    //! @description Splits each string of a list of strings using a given regex.
     public static List<List<String>> splitWords(List<String> words, String regex) {
         List<List<String>> seqList = new ArrayList<>();
 
@@ -116,6 +117,18 @@ public class TrieFunctions {
         }
 
         return seqList;
+    }
+
+    //! @description Splits each string of an array of strings using a given regex.
+    public static List<List<String>> splitWords(String words[], String regex) {
+
+        return splitWords( Arrays.asList( words ), regex );
+    }
+
+    //! @description Converts a string array to a string list. (For easier use in rJava.)
+    public static List<String> wordArrayToList(String words[] ) {
+
+        return Arrays.asList( words );
     }
 
     //! @description Creates a trie by splitting each of the strings in the given list of strings.
@@ -180,16 +193,18 @@ public class TrieFunctions {
 
     //! @description Inserts a "word" (a list of strings) into a trie.
     public static Trie insert(Trie tr, List<String> word) {
-        return insert(tr, word, null);
+        return insert(tr, word, null, null );
     }
 
     //! @description Inserts a "word" (a list of strings) into a trie with a given associated value.
-    public static Trie insert(Trie tr, List<String> word, Double value) {
+    public static Trie insert(Trie tr, List<String> word, Double value, Double bottomVal ) {
 
-        if (value == null) {
+        if (value == null && bottomVal == null ) {
             return merge(tr, make(word, 1.0, null));
+        } else if( bottomVal == null ) {
+            return merge(tr, make(word, value, null));
         } else {
-            return merge(tr, make(word, 0.0, value));
+            return merge(tr, make(word, value, bottomVal));
         }
     }
 
@@ -319,7 +334,7 @@ public class TrieFunctions {
     //! @param tr a trie object
     //! @param word a list of strings
     //! @details Despite the name this function works on the part of the word that can be found in the trie.
-    public static Boolean completeMatch(Trie tr, List<String> word) {
+    public static Boolean hasCompleteMatch(Trie tr, List<String> word) {
         Trie subTr = retrieve(tr, word);
 
         if (subTr.getChildren() == null || subTr.getChildren().isEmpty()) {
@@ -334,13 +349,13 @@ public class TrieFunctions {
         }
     }
 
-    //! @description Optimization of completeMatch over a list of words.
+    //! @description Optimization of hasCompleteMatch over a list of words.
     //! @param tr a trie object
     //! @param words list of words
-    public static List<Boolean> mapCompleteMatch(Trie tr, List<List<String>> words) {
+    public static List<Boolean> mapHasCompleteMatch(Trie tr, List<List<String>> words) {
         List<Boolean> res = new ArrayList<>();
         for (List<String> s : words) {
-            res.add(completeMatch(tr, s));
+            res.add(hasCompleteMatch(tr, s));
         }
         return res;
     }
@@ -353,7 +368,7 @@ public class TrieFunctions {
         if (pos == null || pos.size() < word.size()) {
             return false;
         } else {
-            return completeMatch(tr, pos);
+            return hasCompleteMatch(tr, pos);
         }
     }
 
@@ -368,6 +383,34 @@ public class TrieFunctions {
         return res;
     }
 
+    //! @description Does the trie object tr has a word as key.
+    //! @param tr a trie object
+    //! @param word a word to be checked
+    public static Boolean isKey(Trie tr, List<String> word) {
+        List<String> pos = position(tr, word);
+        if (pos == null || pos.size() < word.size()) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    //! @description Does the trie object tr has as keys each of the list of words.
+    //! @param tr a trie object
+    //! @param words a list of words
+    public static List<Boolean> mapIsKey(Trie tr, List<List<String>> words) {
+        List<Boolean> res = new ArrayList<>();
+        for (List<String> s : words) {
+            res.add(isKey(tr, s));
+        }
+        return res;
+    }
+
+
+
+    ///**************************************************************
+    /// Path derivation and retrieval functions
+    ///**************************************************************
 
     public static class Pair<T1, T2> implements Map.Entry<T1, T2> {
         T1 key;
@@ -425,7 +468,7 @@ public class TrieFunctions {
 
             //System.out.println( sum + " " + tr.getValue() );
             if ( tr.getValue() >= 1.0 &&  sum < tr.getValue() ||
-                    tr.getValue() < 1.0 && sum < 1.0 ) {
+                    tr.getValue() < 1.0 && sum + 2.0d * Math.ulp(sum) < 1.0d ) {
                 rows.add(currentPath);
             }
 
@@ -445,6 +488,58 @@ public class TrieFunctions {
         toRows(rows, tr, path);
 
         return rows;
+    }
+
+    //! @description Converts a list of root-to-leaf paths into a list of root-to-leaf keys.
+    //! @param paths a list of lists with Map.Entry elements
+    public static List< List< String > > pathsKeys( List<List<Map.Entry<String, Double>>> paths ) {
+        List< List< String > > rows = new ArrayList();
+
+        for (List<Map.Entry<String, Double>> ps : paths) {
+            List< String > keyPath = new ArrayList();
+
+            for (Map.Entry<String, Double> p : ps) {
+                keyPath.add( p.getKey() );
+            }
+            rows.add( keyPath );
+        }
+
+        return rows;
+    }
+
+    //! @description Converts a list of root-to-leaf paths into a list of root-to-leaf values.
+    //! @param paths a list of lists with Map.Entry elements
+    public static List< List< Double > > pathsValues( List<List<Map.Entry<String, Double>>> paths ) {
+        List< List< Double > > rows = new ArrayList();
+
+        for (List<Map.Entry<String, Double>> ps : paths) {
+            List< Double > valuePath = new ArrayList();
+
+            for (Map.Entry<String, Double> p : ps) {
+                valuePath.add( p.getValue() );
+            }
+            rows.add( valuePath );
+        }
+
+        return rows;
+    }
+
+
+    //! @description Converts a list of root-to-leaf paths into a list of probabilities.
+    //! @param paths a list of lists with Map.Entry elements
+    public static List< Double > pathsProbabilities( List<List<Map.Entry<String, Double>>> paths ) {
+        List<Double> probs = new ArrayList();
+
+        for (List<Map.Entry<String, Double>> ps : paths) {
+            Double pval = 1.0;
+
+            for (Map.Entry<String, Double> p : ps) {
+                pval = pval * p.getValue();
+            }
+            probs.add( pval );
+        }
+
+        return probs;
     }
 
     //! @description Converts a list of root-to-leaf paths into JSON.
@@ -478,6 +573,27 @@ public class TrieFunctions {
     //! @description Finds all words in the trie tr that start with the word searchWord.
     //! @param tr a trie object
     //! @param sword search word
+    public static List<List<String>> getWords(Trie tr) {
+
+        // Simple copy of the code below, too short and trivial to refactor at this point.
+        List<List<Map.Entry<String, Double>>> paths = rootToLeafPaths(tr);
+
+        List<List<String>> res = new ArrayList<>();
+        for (List<Map.Entry<String, Double>> ps : paths) {
+
+            List<String> w = new ArrayList<>();
+
+            for (Map.Entry<String, Double> p : ps) {
+                w.add(p.getKey());
+            }
+            res.add(w);
+        }
+        return res;
+    }
+
+    //! @description Finds all words in the trie tr that start with the word searchWord.
+    //! @param tr a trie object
+    //! @param sword search word
     public static List<List<String>> getWords(Trie tr, List<String> sword) {
 
         List<String> pos = position(tr, sword);
@@ -505,6 +621,53 @@ public class TrieFunctions {
             return res;
         }
     }
+
+
+    //! @description Transforms a list of root-to-leaves paths into a list of word-probability pairs.
+    //! @param paths
+    public static List< Map.Entry< List<String>, Double > > pathsToWordsWithProbabilities( List<List<Map.Entry<String, Double>>> paths ) {
+
+        List< Map.Entry< List<String>, Double > > res = new ArrayList<>();
+
+        for (List<Map.Entry<String, Double>> ps : paths) {
+
+            List<String> keyPath = new ArrayList<>();
+            for( Map.Entry<String,Double> p : ps ) { keyPath.add(p.getKey()); }
+
+            Double prob=1.0;
+            for( Map.Entry<String,Double> p : ps ) { prob = prob * p.getValue(); }
+
+            Pair< List<String>, Double > wp = new Pair<>( keyPath, prob );
+
+            res.add( wp );
+        }
+
+        return res;
+    }
+
+    public static List< Map.Entry< List<String>, Double > > topRootToLeafPaths( Trie tr, int k ) {
+
+        List< Map.Entry< List<String>, Double > > res = new ArrayList<>();
+
+        List< List< Map.Entry<String,Double> > > paths = rootToLeafPaths( tr );
+
+        List< Map.Entry< List<String>, Double > > wpPairs = pathsToWordsWithProbabilities( paths );
+
+        // Sorting in descending order
+        Collections.sort( wpPairs, (a,b) -> a.getValue() > b.getValue() ? -1 : a.getValue() == b.getValue() ? 0 : 1 );
+
+        for( int i=0; i < k; i++ ) {
+            res.add( wpPairs.get(i) );
+        }
+
+        return res;
+    }
+
+
+    ///**************************************************************
+    /// Conversion to probabilities functions
+    ///**************************************************************
+
 
     //! @description Gives JSON form of the probabilities to reach leaves of the trie.
     //! @param tr the trie to find the leaf probabilities for
@@ -834,6 +997,7 @@ public class TrieFunctions {
         }
     }
 
+
     ///**************************************************************
     /// Removal functions
     ///**************************************************************
@@ -1067,6 +1231,45 @@ public class TrieFunctions {
         return map( tr, removalObj, null );
     }
 
+
+    ///**************************************************************
+    /// Prune functions
+    ///**************************************************************
+
+    protected static Trie pruneRec( Trie tr, int maxLevel, int n ) {
+
+        if ( tr.getChildren() != null && !tr.getChildren().isEmpty() && ( maxLevel < 0 || n < maxLevel ) ) {
+            Map<String, Trie> resChildren = new HashMap<>();
+
+            for (Trie elem : tr.getChildren().values()) {
+
+                Trie rElem = pruneRec(elem, maxLevel, n + 1);
+
+                resChildren.put(elem.getKey(), rElem);
+            }
+
+            if (resChildren.isEmpty()) {
+                return tr.clone();
+            }
+
+            Trie res = new Trie(tr.getKey(), tr.getValue());
+            res.setChildren(resChildren);
+
+            return res;
+        } else {
+            return new Trie(tr.getKey(), tr.getValue());
+        }
+    }
+
+    //! @description Prunes the trie to a specified maximum level.
+    //! @param tr trie object
+    //! @param maxLevel maximum level
+    public static Trie prune(Trie tr, int maxLevel ) {
+
+      return pruneRec( tr, maxLevel, 0);
+    }
+
+
     ///**************************************************************
     /// Random choice functions
     ///**************************************************************
@@ -1161,4 +1364,5 @@ public class TrieFunctions {
 
         return res;
     }
+
 }

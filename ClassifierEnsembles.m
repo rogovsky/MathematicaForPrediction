@@ -138,10 +138,15 @@
       2. Add error message for EnsembleClassifierROCData and EnsembleClassifierROCPlots.
 *)
 
+If[Length[DownValues[ROCFunctions`ToROCAssociation]] == 0,
+  Echo["ROCFunctions.m", "Importing from GitHub:"];
+  Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/ROCFunctions.m"]
+];
+
 BeginPackage["ClassifierEnsembles`"]
 
 EnsembleClassifier::usage = "Create an ensemble of classifiers over the same data. \
-Returns an Association of IDs mapped to classifier funcitons."
+Returns an Association of IDs mapped to classifier functions."
 
 EnsembleClassifierVotes::usage = "Find votes by a classifier ensemble for a record ora a list of records."
 
@@ -174,10 +179,6 @@ returns an association of classifier ensemble ROC plots."
 
 Begin["`Private`"]
 
-If[Length[DownValues[ROCFunctions`ToROCAssociation]] == 0,
-  Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/ROCFunctions.m"]
-];
-
 Needs["ROCFunctions`"]
 
 Clear[EnsembleClassifier]
@@ -201,26 +202,46 @@ EnsembleClassifier[___] := (Message[EnsembleClassify::nargs]; $Failed);
 (* Resampling classifier making                               *)
 (**************************************************************)
 
-Clear[ClassifierDataQ]
-ClassifierDataQ[data_] := MatchQ[data, {Rule[_List, _] ..}] && ArrayQ[data[[All, 1]]];
 
-Clear[ResamplingEnsembleClassifier]
-ResamplingEnsembleClassifier[methods : {(_String | {_String, _?NumberQ} | {_String, _?NumberQ, _Integer}) ..},
-  data_?ClassifierDataQ,
-  opts : OptionsPattern[]] :=
-    Block[{fullMethods, res},
-      fullMethods =
-          Map[Which[StringQ[#], {#, 0.9, 1}, Length[#] == 2, Append[#, 1], True, #] &, methods];
-      fullMethods =
-          Map[If[! (0 < #[[2]] <= 1), {#[[1]], 0.9, #[[3]]}, #] &, fullMethods];
-      fullMethods =
-          Map[If[! (0 < #[[3]]), {#[[1]], #[[2]], 1}, #] &, fullMethods];
-      fullMethods = Map[Table[Take[#, 2], {#[[3]]}] &, fullMethods];
+Clear[ClassifierDataQ];
+ClassifierDataQ[data_] :=
+    MatchQ[data, {Rule[_List, _] ..}] && ArrayQ[data[[All, 1]]] || MatchQ[data, {Rule[_?AtomQ, _] ..}];
+
+Clear[ClassifierMethodQ];
+ClassifierMethodQ[x_] := StringQ[x] || MatchQ[ x, {_String, _Rule..} ]; (* And check is it known by Classify. *)
+
+Clear[ResamplingEnsembleClassifier];
+ResamplingEnsembleClassifier[specs : {(_?ClassifierMethodQ | {_?ClassifierMethodQ, _?NumberQ} | {_?ClassifierMethodQ, _?NumberQ, _Integer} | {_?ClassifierMethodQ, _?NumberQ, _Integer, RandomSample|RandomChoice}) ..},
+  data_?ClassifierDataQ, args___] :=
+    Block[{fullSpecs},
+      fullSpecs =
+          specs /. {
+            m_?ClassifierMethodQ :> <| "method"-> m |>,
+            { m_?ClassifierMethodQ, f_?NumberQ} :>  <| "method"->m, "sampleFraction"->f|>,
+            { m_?ClassifierMethodQ, f_?NumberQ, n_Integer } :>  <| "method"->m, "sampleFraction"->f, "numberOfClassifiers"->n|>,
+            { m_?ClassifierMethodQ, f_?NumberQ, n_Integer, sf:(RandomSample|RandomChoice) } :>  <| "method"->m, "sampleFraction"->f, "numberOfClassifiers"->n, "samplingFunction"->sf|>
+          };
+
+      ResamplingEnsembleClassifier[ fullSpecs, data, args ]
+    ];
+
+ResamplingEnsembleClassifier::wskey = "The given specification key `1` is not one of `2`.";
+
+ResamplingEnsembleClassifier[specs:{_Association..}, data_?ClassifierDataQ, args___ ] :=
+    Block[{fullSpecs, res, knownSpecKeys, allSpecKeys},
+
+      knownSpecKeys = {"method", "sampleFraction", "numberOfClassifiers", "samplingFunction"};
+      allSpecKeys = Union[Flatten[Keys/@specs]];
+      If[ Length[Complement[allSpecKeys, knownSpecKeys]] > 0,
+        Message[ResamplingEnsembleClassifier::wskey, #, knownSpecKeys ] & /@ Complement[allSpecKeys, knownSpecKeys]
+      ];
+
+      fullSpecs = Map[ Join[ <| "method"->"LogisticRegression", "sampleFraction"->0.9, "numberOfClassifiers"->1, "samplingFunction"->RandomChoice |>, # ]&, specs];
       res =
           Map[
-            Table[#[[i, 1]] <> "[" <> ToString[i] <> "," <> ToString[#[[i, 2]]] <> "]" ->
-                Classify[RandomSample[data, Floor[#[[i, 2]]*Length[data]]], Method -> #[[i, 1]]], {i, Length[#]}] &,
-            fullMethods];
+            Table[ToString[#["method"]] <> "[" <> ToString[i] <> "," <> ToString[#["sampleFraction"]] <> "]" ->
+                Classify[#["samplingFunction"][data, Floor[#["sampleFraction"]*Length[data]]], args, Method -> #["method"]], {i, #["numberOfClassifiers"]}] &,
+            fullSpecs];
 
       Association@Flatten[res, 1]
     ];
@@ -231,8 +252,8 @@ ResamplingEnsembleClassifier[methods : {(_String | {_String, _?NumberQ} | {_Stri
 
 Clear[EnsembleClassifierVotes]
 EnsembleClassifierVotes::nargs =
-    "The first argument is expected to be an Association of classfier IDs to \
-classifer functions. The second argument is expected to be a vector or a \
+    "The first argument is expected to be an Association of classifier IDs to \
+classifier functions. The second argument is expected to be a vector or a \
 matrix.";
 
 EnsembleClassifierVotes[cls_Association, record_?VectorQ] :=
@@ -245,8 +266,8 @@ EnsembleClassifierVotes[___] := (Message[EnsembleClassifierVotes::nargs]; $Faile
 
 Clear[EnsembleClassifierProbabilities]
 EnsembleClassifierProbabilities::nargs =
-    "The first argument is expected to be an Association of classfier IDs to \
-classifer functions. The second argument is expected to be a vector or a \
+    "The first argument is expected to be an Association of classifier IDs to \
+classifier functions. The second argument is expected to be a vector or a \
 matrix.";
 
 EnsembleClassifierProbabilities[cls_Association, record_?VectorQ] :=
@@ -260,8 +281,8 @@ EnsembleClassifierProbabilities[___] := (Message[EnsembleClassifierProbabilities
 
 Clear[EnsembleClassify]
 EnsembleClassify::nargs =
-    "The first argument is expected to be an Association of classfier IDs to \
-classifer functions. The second argument is expected to be a vector or a \
+    "The first argument is expected to be an Association of classifier IDs to \
+classifier functions. The second argument is expected to be a vector or a \
 matrix. The third argument is expected to be one of \"Votes\" or \
 \"ProbabilitiesMean\".";
 
@@ -291,8 +312,8 @@ EnsembleClassify[___] := (Message[EnsembleClassify::nargs]; $Failed);
 
 Clear[EnsembleClassifyByThreshold]
 EnsembleClassifyByThreshold::nargs =
-    "The first argument is expected to be an Association of classfier IDs to \
-classifer functions. The second argument is expected to be a vector or a \
+    "The first argument is expected to be an Association of classifier IDs to \
+classifier functions. The second argument is expected to be a vector or a \
 matrix. The third argument is expected to be a rule, label->threshold, where \
 threshold is numerical. The fourth argument is expected to be one of \
 \"Votes\" or \"ProbabilitiesMean\".";
@@ -305,7 +326,7 @@ EnsembleClassifyByThreshold[cls_Association, record_?VectorQ,
         pmeans = EnsembleClassifierProbabilities[cls, record],
         pmeans = Join[<|label -> 0|>, EnsembleClassifierVotes[cls, record]]
       ];
-      If[pmeans[label] >= threshold, label, First@Keys@TakeLargest[pmeans, 1]]
+      If[pmeans[label] >= threshold, label, First@Keys@TakeLargest[ KeyDrop[pmeans,label], 1]]
     ];
 
 EnsembleClassifyByThreshold[cls_Association, records_?MatrixQ,
@@ -317,7 +338,7 @@ EnsembleClassifyByThreshold[cls_Association, records_?MatrixQ,
         pmeans =
             Map[Join[<|label -> 0|>, #] &, EnsembleClassifierVotes[cls, records]]
       ];
-      Map[If[#[label] >= threshold, label, First@Keys@TakeLargest[#, 1]] &, pmeans]
+      Map[If[#[label] >= threshold, label, First@Keys@TakeLargest[KeyDrop[#,label], 1]] &, pmeans]
     ];
 
 EnsembleClassifyByThreshold[___] := (Message[EnsembleClassifyByThreshold::nargs]; $Failed);
@@ -330,11 +351,11 @@ ClassifyByThreshold[ cf_ClassifierFunction, data:(_?VectorQ|_?MatrixQ), label_ -
 (* Calculating classifier ensemble measurements               *)
 (**************************************************************)
 
-ClearAll[EnsembleClassifierMeasurements]
+Clear[EnsembleClassifierMeasurements]
 
 EnsembleClassifierMeasurements::nargs =
-    "The first argument, the classifier ensemble, is expected to be an Association of classfier IDs to \
-classifer functions. \
+    "The first argument, the classifier ensemble, is expected to be an Association of classifier IDs to \
+classifier functions. \
 The second argument, the test data, is expected to be a list of record-to-label rules. \
 The third argument is expected to be a list of measures; see ROCFunctions`ROCFunctions[\"FunctionNames\"]. \
 Use the option \"Classes\" to specify target classes. \
@@ -365,6 +386,7 @@ EnsembleClassifierMeasurements[cls_Association, testData_?ClassifierDataQ, measu
 
       clVals = cfMethod[cls, testData[[All, 1]]];
 
+      (* It is assumed here that all ClassifierFunction objects have the same classes. *)
       clClasses = ClassifierInformation[cls[[1]], "Classes"];
 
       If[ targetClasses === Automatic,
@@ -398,11 +420,11 @@ EnsembleClassifierMeasurements[cls_Association, testData_?ClassifierDataQ, measu
 (* Calculating classifier ensemble ROC data and plots         *)
 (**************************************************************)
 
-ClearAll[EnsembleClassifierROCData]
+Clear[EnsembleClassifierROCData]
 
 EnsembleClassifierROCData::nargs =
-    "The first argument, the classifier ensemble, is expected to be an Association of classfier IDs to \
-classifer functions. \
+    "The first argument, the classifier ensemble, is expected to be an Association of classifier IDs to \
+classifier functions. \
 The second argument, the test data, is expected to be a list of record-to-label rules. \
 The optional third argument, the threshold range, is expected to be a list of numbers between 0 and 1. \
 The optional fourth argument, the target classes, is expected to be list of class labels or All."
@@ -427,8 +449,11 @@ EnsembleClassifierROCData[aCL_Association,
             Map[If[# == ccLabel, #, ccNotLabel] &, testLabels];
         rocs =
             Table[
-              ToROCAssociation[{ccLabel, ccNotLabel}, ccTestLabels,
-                Map[If[# >= th, ccLabel, ccNotLabel] &, Through[clRes[ccLabel]]]],
+              Join[
+                ToROCAssociation[{ccLabel, ccNotLabel}, ccTestLabels,
+                  Map[If[# >= th, ccLabel, ccNotLabel] &, Through[clRes[ccLabel]]]],
+                <|"ROCParameter"->th|>
+              ],
               {th, thRange}];
         ccLabel -> rocs,
         {ccLabel, clClasses}]
@@ -437,11 +462,11 @@ EnsembleClassifierROCData[aCL_Association,
 EnsembleClassifierROCData[___] := (Message[EnsembleClassifierROCData::nargs]; $Failed);
 
 
-ClearAll[EnsembleClassifierROCPlots];
+Clear[EnsembleClassifierROCPlots];
 
 EnsembleClassifierROCPlots::nargs =
-    "The first argument, the classifier ensemble, is expected to be an Association of classfier IDs to \
-classifer functions. \
+    "The first argument, the classifier ensemble, is expected to be an Association of classifier IDs to \
+classifier functions. \
 The second argument, the test data, is expected to be a list of record-to-label rules. \
 The optional third argument, the threshold range, is expected to be a list of numbers between 0 and 1. \
 The optional fourth argument, the target classes, is expected to be list of class labels or All. \

@@ -124,6 +124,7 @@ GenerateMaybeMonadCode[monadName_String, opts : OptionsPattern[]] :=
       MaybeSucceed = ToExpression[monadName <> "Succeed"],
       MaybeEcho = ToExpression[monadName <> "Echo"],
       MaybeEchoFunction = ToExpression[monadName <> "EchoFunction"],
+      MaybeTakeValue = ToExpression[monadName <> "TakeValue"],
       MaybeOption = ToExpression[monadName <> "Option"],
       MaybeIfElse = ToExpression[monadName <> "IfElse"],
       MaybeWhen = ToExpression[monadName <> "When"],
@@ -134,7 +135,7 @@ GenerateMaybeMonadCode[monadName_String, opts : OptionsPattern[]] :=
       ClearAll[Maybe, MaybeUnit, MaybeUnitQ, MaybeBind, MaybeFail, MaybeSucceed,
         MaybeEcho, MaybeEchoFunction,
         MaybeOption, MaybeIfElse, MaybeWhen,
-        MaybeOption, MaybeWhen];
+        MaybeOption, MaybeWhen, MaybeTakeValue];
 
       MaybeBind::ffail = "Failure when applying: `1`";
 
@@ -152,7 +153,12 @@ GenerateMaybeMonadCode[monadName_String, opts : OptionsPattern[]] :=
           Block[{res = f[x]},
             If[FreeQ[res, MaybeFailureSymbol], res,
               If[MaybeEchoFailingFunction,
-                Echo[TemplateApply[StringTemplate[MaybeBind::ffail], HoldForm[f]], ToString[MaybeBind]<>":"]
+                Echo[
+                  TemplateApply[
+                    StringTemplate[MaybeBind::ffail],
+                    If[ LeafCount[HoldForm[f]] > 200, Short[HoldForm[f]], HoldForm[f] ]
+                  ],
+                  ToString[MaybeBind]<>":"]
               ];
               MaybeFailureSymbol
             ]
@@ -165,6 +171,8 @@ GenerateMaybeMonadCode[monadName_String, opts : OptionsPattern[]] :=
 
       MaybeEcho[x_] := Maybe @ Echo[x];
       MaybeEchoFunction[f___][x_] := Maybe @ EchoFunction[f][x];
+
+      MaybeTakeValue[x_] := x;
 
       MaybeOption[f_][xs_] :=
           Block[{res = f[xs]}, If[FreeQ[res, MaybeFailureSymbol], res, Maybe@xs]];

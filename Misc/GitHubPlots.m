@@ -138,14 +138,15 @@ EmptyGitRecord[sha_String, date_String] :=
    2. what colors to use for the tick labels;
    3. with what distance to offset the date of the unknown commits.
  *)
-CorePlotData[ user_String, repo_String ] :=
+ClearAll[CorePlotData]
+CorePlotData[ user_String, repo_String, page_Integer:0, perPage_Integer:30 ] :=
     Block[{ url, data, commitRecs,
       graphRules, commitsGraph, unknown, unknownDate,
       roots, leaves, paths, shaInds, pathsByInds, tickLabels, datePoints },
 
     (* Get data *)
-      url = StringTemplate["https://api.github.com/repos/`1`/`2`/commits"];
-      data = Import[url[user, repo], "JSON"];
+      url = StringTemplate["https://api.github.com/repos/`1`/`2`/commits?page=`3`&per_page=`4`"];
+      data = Import[url[user, repo, ToString[page], ToString[perPage]], "JSON"];
 
       (* Parse *)
       commitRecs = ParseGitRecord /@ data;
@@ -207,19 +208,39 @@ CorePlotData[ user_String, repo_String ] :=
 
 (* DateListPlot based *)
 (* It would be nice to be able to specify the commits point sizes and line thickness of the dependencies. *)
-GitHubDateListPlot[ user_String, repo_String, opts:OptionsPattern[] ] :=
-    Block[{commitRecs, pathsByInds, datePoints, tickLabels, gr, pointSize=0.03},
+ClearAll[GitHubDateListPlot]
 
-      {commitRecs, pathsByInds, datePoints, tickLabels} = CorePlotData[user,repo];
+Options[GitHubDateListPlot] = Options[DateListPlot];
+
+GitHubDateListPlot[ user_String, repo_String, opts:OptionsPattern[] ] := GitHubDateListPlot[user, repo, 1, 30, opts];
+
+GitHubDateListPlot[ user_String, repo_String, page_Integer, perPage_Integer, opts:OptionsPattern[] ] :=
+    Block[{commitRecs, pathsByInds, datePoints, tickLabels, gr, pointSize=0.03, plotTicks, frameTicksValue},
+
+      {commitRecs, pathsByInds, datePoints, tickLabels} = CorePlotData[user, repo, page, perPage];
+
+      plotTicks = Table[{i, tickLabels[[i]] }, {i, 1, Length[tickLabels]}];
+
+      frameTicksValue = OptionValue[GitHubDateListPlot, FrameTicks];
+
+      Which[
+        MatchQ[ frameTicksValue, {_, Automatic}],
+        frameTicksValue = { { First[frameTicksValue], plotTicks}, {Automatic, Automatic} },
+
+        MatchQ[ frameTicksValue, {{_, Automatic}, {_, _}}],
+        frameTicksValue = { { frameTicksValue[[1,1]], plotTicks}, frameTicksValue[[2]] },
+
+        TrueQ[ frameTicksValue === Automatic],
+        frameTicksValue = {{Automatic, plotTicks}, {Automatic, Automatic}}
+      ];
 
       gr = DateListPlot[
         MapThread[Tooltip[#1, #2] &, {datePoints, tickLabels}],
+        FrameTicks -> frameTicksValue,
         opts,
         Joined -> False, PlotStyle -> {PointSize[pointSize]},
         PlotRange -> All, AspectRatio -> 2, ImageSize -> {Automatic, 800},
         GridLines -> {None, Automatic},
-        FrameTicks -> {{Automatic,
-          Table[{i, tickLabels[[i]] }, {i, 1, Length[tickLabels]}]}, {Automatic, Automatic}},
         FrameLabel -> {{"commit order", None}, {1, 1} "date"}];
 
       Show[gr,
@@ -240,10 +261,16 @@ GitHubDateListPlot[ user_String, repo_String, opts:OptionsPattern[] ] :=
 
 
 (* BarChart based *)
-GitHubBarChart[ user_String, repo_String, opts:OptionsPattern[] ] :=
+ClearAll[GitHubBarChart]
+
+Options[GitHubBarChart] = Options[BarChart];
+
+GitHubBarChart[ user_String, repo_String, opts:OptionsPattern[] ] := GitHubBarChart[user, repo, 1, 30, opts];
+
+GitHubBarChart[ user_String, repo_String, page_Integer, perPage_Integer, opts:OptionsPattern[] ] :=
     Block[{commitRecs, pathsByInds, datePoints, tickLabels, distancesFromNow},
 
-      {commitRecs, pathsByInds, datePoints, tickLabels} = CorePlotData[user,repo];
+      {commitRecs, pathsByInds, datePoints, tickLabels} = CorePlotData[user, repo, page, perPage];
 
       distancesFromNow =
           Map[DateDifference[DateList[#], Date[]] &, "date" /. commitRecs];

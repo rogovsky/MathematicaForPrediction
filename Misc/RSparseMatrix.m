@@ -21,7 +21,7 @@
 *)
 
 (*
-    Mathematica is (C) Copyright 1988-2015 Wolfram Research, Inc.
+    Mathematica is (C) Copyright 1988-2018 Wolfram Research, Inc.
 
     Protected by copyright law and international treaties.
 
@@ -36,11 +36,15 @@
 (* :Author: Anton Antonov *)
 (* :Date: 2015-09-27 *)
 
-(* :Package Version: 0.4 *)
+(* :Package Version: 0.6 *)
 (* :Mathematica Version: 10.2 *)
 (* :Copyright: (c) 2015 Anton Antonov *)
 (* :Keywords: R, sparse array, sparse matrix, named rows, named columns *)
 (* :Discussion:
+
+THESE IMPLEMENTATIONS (PACKAGE) ARE OBSOLETE. Please use SSparseMatrix.m:
+
+  https://github.com/antononcube/MathematicaForPrediction/blob/master/SSparseMatrix.m
 
 This notebook has the function implementations for manipulating objects with head RSparseMatrix that behave like
 SparseArray objects but have the added functionalities to use row names and column names in a manner similar to
@@ -51,7 +55,7 @@ Similarly to how it is done in R, RSparseMatrix handles only strings as row name
 
 Note that assignment (with Set[__]) is not implemented.
 
-See the commented out delegation to SparseArray implementation at the of the file.
+See the commented out delegation to SparseArray implementation at the end of the file.
 
 Since the package is under development it is not a real Mathematica package.
 
@@ -66,19 +70,21 @@ References:
 This file was created using Mathematica Plugin for IntelliJ IDEA.
 
 Anton Antonov
+Windermere, FL, USA
 2015-09-27
 
 *)
 
 
+
 ClearAll[RSparseMatrix, MakeRSparseMatrix, ToRSparseMatrix, RowNames,
   ColumnNames, DimensionNames, RowsCount, ColumnsCount, SetRowNames, SetColumnNames, SetDimensionNames ]
 
-Predicate(s)
+(* Predicate(s) *)
 
 RSparseMatrixQ[x_] := Head[x] === RSparseMatrix;
 
-(*MakeRSparseMatrix[obj_]:=RSparseMatrix[<|"sparseArray"->SparseArray[args],"colnames"\[Rule]None,"rownames"\[Rule]None,"dimnames"\[Rule]None|>];*)
+(*MakeRSparseMatrix[obj_]:=RSparseMatrix[<|"SparseMatrix"->SparseArray[args],"ColumnNames"\[Rule]None,"RowNames"\[Rule]None,"DimensionNames"\[Rule]None|>];*)
 
 (*Creation and conversion*)
 
@@ -105,10 +111,10 @@ MakeRSparseMatrix[rules_, dims_, val_, opts : OptionsPattern[]] :=
       ToRSparseMatrix[sarr, opts]
     ];
 
-MakeRSparseMatrix[triplets:_?ArrayQ, opts : OptionsPattern[]] :=
+MakeRSparseMatrix[triplets:_?MatrixQ, opts : OptionsPattern[]] :=
     MakeRSparseMatrix[triplets, Automatic, 0, opts]/; Dimensions[triplets][[2]] == 3;
 
-MakeRSparseMatrix[triplets:_?ArrayQ, dims_, val_, opts : OptionsPattern[]] :=
+MakeRSparseMatrix[triplets:_?MatrixQ, dims_, val_, opts : OptionsPattern[]] :=
     Block[{sarr, rowNames, colNames, rules},
 
       rowNames = Union[ triplets[[All,1]] ];
@@ -128,7 +134,7 @@ MakeRSparseMatrix[triplets:_?ArrayQ, dims_, val_, opts : OptionsPattern[]] :=
 Options[ToRSparseMatrix] = Options[MakeRSparseMatrix];
 
 ToRSparseMatrix[rmat_RSparseMatrix, opts : OptionsPattern[]] :=
-    ToRSparseMatrix[rmat[[1]]["sparseArray"], opts,
+    ToRSparseMatrix[rmat[[1]]["SparseMatrix"], opts,
       "RowNames" -> RowNames[rmat], "ColumnNames" -> ColumnNames[rmat],
       "DimensionNames" -> DimensionNames[rmat]];
 
@@ -150,14 +156,14 @@ ToRSparseMatrix[sarr_SparseArray, opts : OptionsPattern[]] :=
       If[! (dnames === None || (MatchQ[dnames, {_String ..}] && Length[dnames] == 2)),
         Message[RSparseMatrix::dnset, dnames]; Return[$Failed]
       ];
-      RSparseMatrix[<|"sparseArray" -> sarr,
-          "rownames" ->
+      RSparseMatrix[<|"SparseMatrix" -> sarr,
+          "RowNames" ->
               If[rnames === None, None,
                 AssociationThread[rnames, Range[Dimensions[sarr][[1]]]]],
-          "colnames" ->
+          "ColumnNames" ->
               If[cnames === None, None,
                 AssociationThread[cnames, Range[Dimensions[sarr][[2]]]]],
-          "dimnames" ->
+          "DimensionNames" ->
               If[dnames === None, None, AssociationThread[dnames, {1, 2}]]|>]
     ];
 
@@ -185,18 +191,19 @@ ToRSparseMatrix[ds_Dataset, opts : OptionsPattern[]] :=
       ]
     ] /; Length[Dimensions[ds]] == 2;
 
+
 ToRSparseMatrix[xtabs_Association, opts : OptionsPattern[] ] :=
     Block[{},
-      ToRSparseMatrix[ xtabs["XTABMatrix"],
-        "RowNames" -> ToString /@ xtabs["RowNames"],
-        "ColumnNames" -> ToString /@ xtabs["ColumnNames"],
+      ToRSparseMatrix[ xtabs["SparseMatrix"],
+        "RowNames" -> Map[ToString, xtabs["RowNames"]],
+        "ColumnNames" -> Map[ToString, xtabs["ColumnNames"]],
         opts
       ]
-    ]/; MemberQ[ Keys[xtabs], "XTABMatrix" ];
+    ]/; KeyExistsQ[xtabs, "SparseMatrix"] && KeyExistsQ[xtabs, "RowNames"] && KeyExistsQ[xtabs, "ColumnNames"];
 
 ToRSparseMatrix[___] := Message[ToRSparseMatrix::arg1];
 
-SparseArray[rmat_RSparseMatrix] ^:= rmat[[1]]["sparseArray"];
+SparseArray[rmat_RSparseMatrix] ^:= rmat[[1]]["SparseMatrix"];
 
 
 (* Setters *)
@@ -236,19 +243,19 @@ SetDimensionNames[ rmat_, names_:{_String..} ] :=
 (*Query methods*)
 
 RowNames[sarr_RSparseMatrix] :=
-    If[sarr[[1]]["rownames"] === None, None, Keys[sarr[[1]]["rownames"]]];
+    If[sarr[[1]]["RowNames"] === None, None, Keys[sarr[[1]]["RowNames"]]];
 
 ColumnNames[sarr_RSparseMatrix] :=
-    If[sarr[[1]]["colnames"] === None, None, Keys[sarr[[1]]["colnames"]]];
+    If[sarr[[1]]["ColumnNames"] === None, None, Keys[sarr[[1]]["ColumnNames"]]];
 
 DimensionNames[sarr_RSparseMatrix] :=
-    If[sarr[[1]]["dimnames"] === None, {None, None}, Keys[sarr[[1]]["dimnames"]]];
+    If[sarr[[1]]["DimensionNames"] === None, {None, None}, Keys[sarr[[1]]["DimensionNames"]]];
 
 ArrayRules[RSparseMatrix[obj_]] ^:=
-    ArrayRules[RSparseMatrix[obj][[1]]["sparseArray"]];
+    ArrayRules[RSparseMatrix[obj][[1]]["SparseMatrix"]];
 
 Dimensions[RSparseMatrix[obj_]] ^:=
-    Dimensions[RSparseMatrix[obj][[1]]["sparseArray"]];
+    Dimensions[RSparseMatrix[obj][[1]]["SparseMatrix"]];
 
 RowsCount[r_RSparseMatrix] := Dimensions[r][[1]];
 ColumnsCount[r_RSparseMatrix] := Dimensions[r][[2]];
@@ -257,29 +264,29 @@ ColumnsCount[r_RSparseMatrix] := Dimensions[r][[2]];
 
 Transpose[RSparseMatrix[obj_]] ^:=
     Block[{assoc = obj},
-      assoc["sparseArray"] = Transpose[obj["sparseArray"]];
-      assoc["colnames"] = obj["rownames"];
-      assoc["rownames"] = obj["colnames"];
-      assoc["dimnames"] = If[obj["dimnames"] === None, None, Reverse[obj["dimnames"]]];
+      assoc["SparseMatrix"] = Transpose[obj["SparseMatrix"]];
+      assoc["ColumnNames"] = obj["RowNames"];
+      assoc["RowNames"] = obj["ColumnNames"];
+      assoc["DimensionNames"] = If[obj["DimensionNames"] === None, None, Reverse[obj["DimensionNames"]]];
       RSparseMatrix[assoc]
     ];
 
 (*Showing the matrix*)
 
 MatrixForm[RSparseMatrix[obj_], args___] ^:=
-    MatrixForm[RSparseMatrix[obj][[1]]["sparseArray"], args,
+    MatrixForm[RSparseMatrix[obj][[1]]["SparseMatrix"], args,
       TableHeadings -> {RowNames[RSparseMatrix[obj]],
         ColumnNames[RSparseMatrix[obj]]}];
 
 MatrixPlot[RSparseMatrix[obj_], args___] ^:=
-    MatrixPlot[RSparseMatrix[obj][[1]]["sparseArray"], args];
+    MatrixPlot[RSparseMatrix[obj][[1]]["SparseMatrix"], args];
 
 (*Sums*)
 
-RowSums[rmat_RSparseMatrix] := Total[rmat[[1]]["sparseArray"], {2}];
-ColumnSums[rmat_RSparseMatrix] := Total[rmat[[1]]["sparseArray"]];
+RowSums[rmat_RSparseMatrix] := Total[rmat[[1]]["SparseMatrix"], {2}];
+ColumnSums[rmat_RSparseMatrix] := Total[rmat[[1]]["SparseMatrix"]];
 
-Total[rmat_RSparseMatrix, args___] ^:= Total[rmat[[1]]["sparseArray"], args];
+Total[rmat_RSparseMatrix, args___] ^:= Total[rmat[[1]]["SparseMatrix"], args];
 
 (*Dot product*)
 
@@ -287,7 +294,7 @@ Total[rmat_RSparseMatrix, args___] ^:= Total[rmat[[1]]["sparseArray"], args];
 
 Dot[RSparseMatrix[obj1_], RSparseMatrix[obj2_]] ^:=
     Block[{res},
-      res = Dot[RSparseMatrix[obj1][[1]]["sparseArray"], RSparseMatrix[obj2][[1]]["sparseArray"]];
+      res = Dot[RSparseMatrix[obj1][[1]]["SparseMatrix"], RSparseMatrix[obj2][[1]]["SparseMatrix"]];
       ToRSparseMatrix[res, "RowNames" -> RowNames[RSparseMatrix[obj1]],
         "ColumnNames" -> ColumnNames[RSparseMatrix[obj2]],
         "DimensionNames" -> {DimensionNames[RSparseMatrix[obj1]][[1]],
@@ -296,14 +303,14 @@ Dot[RSparseMatrix[obj1_], RSparseMatrix[obj2_]] ^:=
 
 Dot[RSparseMatrix[obj_], x_] ^:=
     Block[{res},
-      res = Dot[RSparseMatrix[obj][[1]]["sparseArray"], x];
+      res = Dot[RSparseMatrix[obj][[1]]["SparseMatrix"], x];
       ToRSparseMatrix[res, "RowNames" -> RowNames[RSparseMatrix[obj]],
         "DimensionNames" -> {DimensionNames[RSparseMatrix[obj]][[1]], ""}]
     ];
 
 Dot[x_, RSparseMatrix[obj_]] ^:=
     Block[{res},
-      res = Dot[x, RSparseMatrix[obj][[1]]["sparseArray"]];
+      res = Dot[x, RSparseMatrix[obj][[1]]["SparseMatrix"]];
       ToRSparseMatrix[res, "ColumnNames" -> ColumnNames[RSparseMatrix[obj]],
         "DimensionNames" -> {"", DimensionNames[RSparseMatrix[obj]][[2]]}]
     ];
@@ -361,28 +368,28 @@ Plus[x_, rmat1_RSparseMatrix] ^:=
 
 Part[RSparseMatrix[obj_], s1 : (_String | {_String ..})] ^:=
     Block[{ i1 },
-      i1 = If[ ListQ[s1], obj["rownames"] /@ s1, obj["rownames"] @ s1 ];
+      i1 = If[ ListQ[s1], obj["RowNames"] /@ s1, obj["RowNames"] @ s1 ];
       Part[ RSparseMatrix[obj], i1, All ]
     ];
 Part[RSparseMatrix[obj_], s1 : (_String | {_String ..}), s2 : (_String | {_String ..})] ^:=
     Block[{ i1, i2 },
-      i1 = If[ ListQ[s1], obj["rownames"] /@ s1, obj["rownames"] @ s1 ];
-      i2 = If[ ListQ[s2], obj["colnames"] /@ s2, obj["colnames"] @ s2 ];
+      i1 = If[ ListQ[s1], obj["RowNames"] /@ s1, obj["RowNames"] @ s1 ];
+      i2 = If[ ListQ[s2], obj["ColumnNames"] /@ s2, obj["ColumnNames"] @ s2 ];
       Part[ RSparseMatrix[obj], i1, i2 ]
     ];
 Part[RSparseMatrix[obj_], s1 : (_String | {_String ..}), s2_] ^:=
     Block[{ i1 },
-      i1 = If[ ListQ[s1], obj["rownames"] /@ s1, obj["rownames"] @ s1 ];
+      i1 = If[ ListQ[s1], obj["RowNames"] /@ s1, obj["RowNames"] @ s1 ];
       Part[ RSparseMatrix[obj], i1, s2 ]
     ];
 Part[RSparseMatrix[obj_], s1_, s2 : (_String | {_String ..})] ^:=
     Block[{ i2 },
-      i2 = If[ ListQ[s2], obj["colnames"] /@ s2, obj["colnames"] @ s2 ];
+      i2 = If[ ListQ[s2], obj["ColumnNames"] /@ s2, obj["ColumnNames"] @ s2 ];
       Part[ RSparseMatrix[obj], s1, i2 ]
     ];
 Part[RSparseMatrix[obj_], s1_, s2_] ^:=
     Block[{smat},
-      smat = Part[ obj["sparseArray"], s1, s2 ];
+      smat = Part[ obj["SparseMatrix"], s1, s2 ];
       If[Head[smat] === Part,
         smat,
         If[ MatrixQ[smat],
@@ -423,18 +430,18 @@ There are three solutions (1) using array rules, (2) using matrix padding, Array
         Since Association removes duplication of keys special care has to be taken when joining the row and column names.
 *)
 
-Options[RowBind] = {"IgnoreColumnNames" -> False};
+(*Options[RowBind] = {"IgnoreColumnNames" -> False};*)
 
 RowBind[r1_RSparseMatrix, r2_RSparseMatrix, rm__] := RowBind[ RowBind[r1, r2], rm];
 
 RowBind[rm:{_RSparseMatrix..}] := Fold[RowBind, First[rm], Rest[rm]];
 
-RowBind[r1_RSparseMatrix, r2_RSparseMatrix, opts : OptionsPattern[]] :=
+RowBind[r1_RSparseMatrix, r2_RSparseMatrix ] :=
     Block[{sarr, joinedRowAssoc, resRowNames},
-      sarr = Join[r1[[1]]["sparseArray"], r2[[1]]["sparseArray"]];
+      sarr = Join[ SparseArray[r1], SparseArray[r2] ];
       (* Special handling of duplication of row names in the result. *)
 
-      joinedRowAssoc = Join[r1[[1]]["rownames"], r2[[1]]["rownames"]];
+      joinedRowAssoc = Join[r1[[1]]["RowNames"], r2[[1]]["RowNames"]];
       If[Length[joinedRowAssoc] == Dimensions[sarr][[1]],
         resRowNames = Join[RowNames[r1], RowNames[r2]],
         resRowNames =
@@ -444,20 +451,19 @@ RowBind[r1_RSparseMatrix, r2_RSparseMatrix, opts : OptionsPattern[]] :=
         "ColumnNames" -> ColumnNames[r1], "DimensionNames" -> DimensionNames[r1]]
     ];
 
-Options[ColumnBind] = {"IgnoreRowNames" -> False};
+(*Options[ColumnBind] = {"IgnoreRowNames" -> False};*)
 
 ColumnBind[r1_RSparseMatrix, r2_RSparseMatrix, rm__] := ColumnBind[ ColumnBind[r1, r2], rm];
 
 ColumnBind[rm:{_RSparseMatrix..}] := Fold[ColumnBind, First[rm], Rest[rm]];
 
-ColumnBind[r1_RSparseMatrix, r2_RSparseMatrix, opts : OptionsPattern[]] :=
+ColumnBind[r1_RSparseMatrix, r2_RSparseMatrix ] :=
     Block[{sarr, joinedRowAssoc, resColumnNames},
       sarr = Transpose@
-          Join[Transpose@r1[[1]]["sparseArray"],
-            Transpose@r2[[1]]["sparseArray"]];
+          Join[Transpose@SparseArray[r1], Transpose@SparseArray[r2]];
       (* Special handling of duplication of column names in the result. *)
 
-      joinedRowAssoc = Join[r1[[1]]["colnames"], r2[[1]]["colnames"]];
+      joinedRowAssoc = Join[r1[[1]]["ColumnNames"], r2[[1]]["ColumnNames"]];
       If[Length[joinedRowAssoc] == Dimensions[sarr][[2]],
         resColumnNames = Join[ColumnNames[r1], ColumnNames[r2]],
         resColumnNames =
@@ -485,6 +491,16 @@ ImposeRowNames[rmat_RSparseMatrix, rowNames : {_String ..}] :=
 ImposeColumnNames[rmat_RSparseMatrix, colNames : {_String ..}] :=
     Transpose[ImposeRowNames[Transpose[rmat], colNames]];
 
+
+Clear[RSparseMatrixToTriplets]
+RSparseMatrixToTriplets[ rsmat_RSparseMatrix ] :=
+    Block[{t},
+      t = Most[ArrayRules[rsmat]];
+      t[[All, 1, 1]] = t[[All, 1, 1]] /. Dispatch[Thread[Range[RowsCount[rsmat]] -> RowNames[rsmat]]];
+      t[[All, 1, 2]] = t[[All, 1, 2]] /. Dispatch[Thread[Range[ColumnsCount[rsmat]] -> ColumnNames[rsmat]]];
+      Flatten/@ (List @@@ t)
+    ];
+
 (* Delegation to SparseArray functions *)
 
 (* This is similar to the OOP design pattern Decorator.
@@ -495,7 +511,7 @@ Note that this decoration is very aggressive and it might have un-forseen effect
 
 (* Format *)
 
-Format[RSparseMatrix[obj_]] := obj["sparseArray"];
+Format[RSparseMatrix[obj_]] := obj["SparseMatrix"];
 
 (*F_[rmat_RSparseMatrix, args___] ^:=*)
     (*Block[{res = F[SparseArray[rmat], args]},*)
@@ -503,12 +519,12 @@ Format[RSparseMatrix[obj_]] := obj["sparseArray"];
       (*Print["RSparseMatrix decoration::res=",res];*)
       (*If[MatrixQ[res],*)
         (*RSparseMatrix[*)
-          (*Join[<|"sparseArray" -> SparseArray[res]|>, Rest[rmat[[1]]]]],*)
+          (*Join[<|"SparseMatrix" -> SparseArray[res]|>, Rest[rmat[[1]]]]],*)
         (*res*)
       (*]*)
     (*] /;*)
         (*! MemberQ[*)
-          (*Join[{"SparseArray", "ToRSparseMatrix",*)
+          (*Join[{"SparseMatrix", "ToRSparseMatrix",*)
             (*"RowNames", "ColumnNames", "DimensionNames",*)
             (*"SetRowNames", "SetColumnNames", "SetDimensionNames",*)
             (*"MatrixForm", "MatrixPlot",*)

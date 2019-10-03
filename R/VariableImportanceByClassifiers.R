@@ -99,6 +99,7 @@ library(ggplot2)
 #' If varTypePrefixes != NULL and successLabel == NULL a data frame with column names c("VariablePrefix", "Accuracy") .
 AccuracyByVariableShuffling <- function( classifier,
                                          testData, trainColInds = NULL,
+                                         predictFunction = function(object, df) predict( object = object, df,  type = "prob" ),
                                          successLabel = NULL, classificationType = "prob", classificationThreshold = 0.5,
                                          varTypePrefixes = NULL, .progress = "none" ) {
 
@@ -141,7 +142,8 @@ AccuracyByVariableShuffling <- function( classifier,
 
       # This is expected to return a matrix the columns of which correspond to class labels
       # and the entries are probabilities.
-      clRes <- predict( classifier, testDF[, -dataLabelIndex ],  type = "prob" )
+      ## clRes <- predict( classifier, testDF[, -dataLabelIndex ],  type = "prob" )
+      clRes <- predictFunction( classifier, testDF[, -dataLabelIndex ] )
 
       # The alternative of this check is more robust.
       # if ( ! is.null(classfier$classes) && !( successLabel %in% classfier$classes ) ) {
@@ -209,24 +211,59 @@ ROCValues <- function( classResMat, testLabels, range = seq(0,1,0.05), .progress
     data.frame( Predicted = ifelse( classResMat[,successLabel] >= th, successLabel, nonSuccessLabel ),
     Label = testLabels,
     stringsAsFactors = FALSE) )
-    clSuccessDF <- clSuccessDF / rowSums(clSuccessDF)
+    clSuccessRateDF <- clSuccessDF / rowSums(clSuccessDF)
 
-    if( !( successLabel %in% colnames(clSuccessDF) ) ) {
-      clSuccessDF <- cbind( successLabel = 0, clSuccessDF)
-      colnames( clSuccessDF ) <- c( successLabel, colnames(clSuccessDF)[-1] )
+    if( !( successLabel %in% colnames(clSuccessRateDF) ) ) {
+      clSuccessRateDF <- cbind( successLabel = 0, clSuccessRateDF)
+      colnames( clSuccessRateDF ) <- c( successLabel, colnames(clSuccessRateDF)[-1] )
     }
-    if( !( nonSuccessLabel %in% colnames(clSuccessDF) ) ) {
-      clSuccessDF <- cbind( nonSuccessLabel = 0, clSuccessDF )
-      colnames( clSuccessDF ) <- c( nonSuccessLabel, colnames(clSuccessDF)[-1] )
+    if( !( nonSuccessLabel %in% colnames(clSuccessRateDF) ) ) {
+      clSuccessRateDF <- cbind( nonSuccessLabel = 0, clSuccessRateDF )
+      colnames( clSuccessRateDF ) <- c( nonSuccessLabel, colnames(clSuccessRateDF)[-1] )
     }
 
     data.frame( "Threshold" = th,
-    "TPR" = clSuccessDF[ successLabel, successLabel ],
-    "FPR" = clSuccessDF[ nonSuccessLabel, successLabel ],
+    "TPR" = clSuccessRateDF[ successLabel, successLabel ],
+    "FPR" = clSuccessRateDF[ nonSuccessLabel, successLabel ],
+    "TP"  = clSuccessRateDF[ successLabel, successLabel ],
+    "TN"  = clSuccessRateDF[ nonSuccessLabel, nonSuccessLabel ],
+    "FP"  = clSuccessRateDF[ nonSuccessLabel, successLabel ],
+    "FN"  = clSuccessRateDF[ successLabel, nonSuccessLabel ],
     stringsAsFactors = FALSE)
 
   }, .progress = .progress )
 }
+
+#' @description 
+#' @param rocDF a data frame with columns "Threshold", "FPR", "TPR", and optionally a model IDs column
+#' @param title title of the plot
+#' @param point.text should the par
+#' @param modelColumnName the name of the column that has the model IDs
+ROCPlot <- function( rocDF, title = NULL, point.text = TRUE, modelColumnName = "Model" ) {
+  pres <- 
+    if( modelColumnName %in% colnames(rocDF) ) { 
+      ggplot(data = rocDF ) + geom_line(aes_string( x = "FPR", y = "TPR", color = modelColumnName ) ) 
+    } else { 
+      ggplot(data = rocDF ) + geom_line(aes( x = FPR, y = TPR) ) 
+    }
+  
+  pres <- pres +
+    xlim(0,1) + ylim(0,1)  +
+    ggtitle( title ) + 
+    xlab("False Positive Rate (FPR)") + ylab("True Positive Rate (TPR)")
+  
+  if( point.text ) {
+    if( modelColumnName %in% colnames(rocDF) ) { 
+      pres <- pres + geom_point( aes_string( x = "FPR", y = "TPR", color = modelColumnName ) )
+    } else {
+      pres <- pres + geom_point( aes( x = FPR, y = TPR) )
+    }
+    pres <- pres + geom_text(aes(label = Threshold, x = FPR, y = TPR), hjust=0.5, vjust=-0.5)
+  }
+  
+  pres
+}
+
 
 #' @description Gives visual representation of the vatiable importance data.
 #' @param varImportanceData a data frame with variable importance calculations

@@ -60,7 +60,8 @@ TriePosition <- function( trie, word ) {
   } else {
     pos <- trie$Hash[[ word[1] ]]
   }
-  if ( is.null(pos) || is.na(pos) ) {
+  # if ( is.null(pos) || is.na(pos) ) {
+  if ( is.null(pos) || length(pos)==0 ) {
     NULL 
   } else if ( length(word) == 1 ) {
     pos
@@ -72,15 +73,19 @@ TriePosition <- function( trie, word ) {
 #' @description Gives the node corresponding to the last "character" of the "word" in a given trie.
 #' @param trie a trie
 #' @param word a list of characters
-TrieRetrive <- function( trie, word ) {
+TrieRetrieve <- function( trie, word, strict = TRUE ) {
   if ( !is.atomic(word) ) {
     stop("The second argument is not an atomic vector", call. = TRUE)
   } 
   
   pos <- TriePosition( trie, word )
-  if ( is.na(pos) || length(pos) == 0 ) {
-    NULL 
-  } else if ( length(pos) == length(word) ) {
+  if ( is.null(pos) || length(pos) == 0 ) {
+    return(NULL)
+  }
+  
+  pos <- pos[!is.na(pos)]
+  
+  if ( strict && length(pos) == length(word) || !strict) {
     res <- trie
     for( p in pos) {
       res <- res$Children[[p]]
@@ -88,7 +93,7 @@ TrieRetrive <- function( trie, word ) {
     res
   } else {
     NULL
-  }
+  } 
 }
 
 
@@ -232,13 +237,15 @@ TrieCreate <- function( words ) {
 #' @description Converts the frequencies at the nodes of a trie into probabilities. 
 #' @param trie a prifix tree
 TrieNodeProbabilities <- function( trie ) {
-  res <- TrieNodeProbabilitiesRec( trie )
+  res <- TrieNodeProbabilitiesRec( trie, level = 0 )
   res$Value <- 1
   res
 }
 
 #' @description Internal function for the recursive implementation of TrieNodeProbabilities.
-TrieNodeProbabilitiesRec <- function( trie ) {
+#' @param trie a prefix tree
+#' @param level a recursion level (redundant but useful while debugging)
+TrieNodeProbabilitiesRec <- function( trie, level ) {
   if ( is.null( trie$Children ) || length( trie$Children ) == 0 ) {
     trie
   } else {
@@ -248,7 +255,7 @@ TrieNodeProbabilitiesRec <- function( trie ) {
       chSum <- trie$Value
     }
     res <- llply( trie$Children, function(x) { 
-      xr <- TrieNodeProbabilitiesRec( x )
+      xr <- TrieNodeProbabilitiesRec( x, level + 1 )
       xr$Value <-  xr$Value / chSum
       xr
     })
@@ -286,7 +293,7 @@ TrieRootToLeafPaths <- function( trie ) {
 #' @param trie a trie
 #' @param word a word in the trie 
 TrieCompleteMatch <- function( trie, word ) {
-  res <- TrieRetrive( trie, word )
+  res <- TrieRetrieve( trie, word )
   if ( length(res$Children) == 0 ) { TRUE }
   else {
     ## If the frequencies/probabilities of the children are less than
@@ -333,10 +340,16 @@ TrieLeafProbabilitiesDFRec <- function( trie, level = 0 ) {
 #' @param trie the trie to find the leaf probabilities for
 #' @param aggregateFunc if one of c(sum, mean, max) it is applied to the vector of probabilities corresponding to the same label;
 #' if NULL no aggregation is done
-TrieLeafProbabilities <- function( trie, aggregateFunc = sum  ) {
+#' @param normalize if TRUE the result is normalized by the sum of elements.
+TrieLeafProbabilities <- function( trie, aggregateFunc = sum, normalize = TRUE  ) {
   if ( is.null(trie) ) { return(NULL) }
   leafValHash <- vector( mode = "numeric", length = 0 )
-  TrieLeafProbabilitiesRec( trie, level = 0, leafValHash = leafValHash, trie$Value )
+  res <- TrieLeafProbabilitiesRec( trie, level = 0, leafValHash = leafValHash, trie$Value )
+  if( normalize ) {
+    res / sum(res)
+  } else {
+    res
+  }
 }
 
 
@@ -346,7 +359,7 @@ TrieLeafProbabilities <- function( trie, aggregateFunc = sum  ) {
 TrieLeafProbabilitiesRec <- function( trie, level, leafValHash, prob ) {
   if ( is.null(trie) || is.na(trie) ) { NULL }
   else if ( is.null(trie$Children) || is.na(trie$Children) || length(trie$Children) == 0 ) {
-    if ( is.na( leafValHash[ trie$Key ] ) ) { 
+    if (  !is.null( trie$Key ) && ( is.null( leafValHash[ trie$Key ] ) || is.na( leafValHash[ trie$Key ] ) ) ) { 
       leafValHash[[ trie$Key ]] <- prob * trie$Value
     } else { 
       leafValHash[[ trie$Key ]] <- leafValHash[[ trie$Key ]] + prob * trie$Value 
@@ -358,6 +371,7 @@ TrieLeafProbabilitiesRec <- function( trie, level, leafValHash, prob ) {
     ## cat( "after:", leafValHash, "\n" )
     ## cat("Level:", level, ", res:", "\n" ); print(res)
     if ( chSum < 1 && !is.null(trie$Key) ) {
+      cat("internal", trie$Key, "\n" )
       if ( is.na( leafValHash[ trie$Key ] ) ) { 
         leafValHash[[ trie$Key ]] <- (1 - chSum) * prob
       } else { 
@@ -366,6 +380,27 @@ TrieLeafProbabilitiesRec <- function( trie, level, leafValHash, prob ) {
     } 
   }
   leafValHash
+}
+
+#' @description Gives the counts of the total nodes, internal nodes, and leaves of a trie.
+#' @param tr a trie
+TrieNodeCounts <- function(tr) {
+  
+  TrieNodeCountsRec <- function(tr, nInternal, nLeaves ) {
+     if( is.null(tr$Children) || length(tr$Children) == 0 ) {
+       list( Internal = nInternal, Leaves = nLeaves + 1 )
+     } else {
+       res <- list( Internal = nInternal, Leaves = nLeaves )
+       for ( chTr in tr$Children ) {
+         res <- TrieNodeCountsRec( chTr, res$Internal, res$Leaves )
+       }
+       list( Internal = res$Internal + 1, Leaves = res$Leaves )
+     }
+  }
+  
+  res <- TrieNodeCountsRec(tr, 0, 0)
+  res <- c( Total = res$Internal + res$Leaves, res )
+  setNames( as.numeric(res), names(res) )
 }
 
 
@@ -404,3 +439,67 @@ TrieToDataTree <- function( trie, topKeyIsNullName = "ALL" ) {
 TrieForm <- function( trie ) {
   print( TrieToDataTree(trie), "Value")
 }
+
+#' @description Classifies a record using a Trie object
+#' @param tr a trie
+#' @param record a list of "words" to be classified
+#' @param outputType can be "Decision" or "Probabilities"
+#' @param default class label to be returned if no classification for the record is found
+TrieClassify <- function( tr, record, type = "Decision", default = NA )
+{
+  sTr <- TrieRetrieve( tr, record, strict = FALSE )
+
+  if( is.null(sTr) || is.na(sTr) || length(sTr) == 0 ) {
+    
+    clRes <- setNames( c(0), c(default) )
+
+  } else {
+    
+    clRes <- TrieLeafProbabilities( sTr, normalize = TRUE )
+    clRes <- rev(sort(clRes))
+  }
+  
+  if( tolower(type) == "probabilities" || tolower(type) == "raw" ) {
+    clRes  
+  } else if( tolower(type) == "decision") {
+    names(clRes)[[1]]
+  } else {
+    clRes
+  }
+}
+
+#' @description Overloading `predict` to use tries with frequencies
+#' @param tr a trie with class attribute "TrieWithFrequencies"
+#' @param data a charecter vector or a data data frame
+#' @param type type of the output
+#' @param default class label to be returned if no classification for the record is found
+predict.TrieWithFrequencies <- function( tr, data, type = "Decision", default = NA  ) {
+
+  if( is.character(data) ) {
+    
+    TrieClassify( tr, data, type = type, default = default )  
+    
+  } else if ( is.data.frame(data) && tolower(type) == "decision" ) {
+
+    res <- aaply( as.matrix(data), 1, function(x) { TrieClassify(tr, x, type = "Decision", default = default)  })
+    res
+    
+  } else if ( is.data.frame(data) && ( tolower(type) == "probabilities" || tolower(type) == "raw" )) {
+    
+    res <- alply( as.matrix(data), 1, function(x) { TrieClassify(tr, x, type = "raw", default = default)  })
+    
+    labels <- unique(unlist(llply(res,names)))
+    stencil <- setNames(rep(0,length(labels)), labels)
+
+    laply( res, function(x) { stencil[names(x)] <- x; stencil} )
+    
+  } else {
+    
+    warning("Data argument of unknown type.", call. = TRUE)
+    
+    Map( function(x) TrieClassify( tr, x, type = type, default = default ), data )  
+    
+  }
+  
+}
+  

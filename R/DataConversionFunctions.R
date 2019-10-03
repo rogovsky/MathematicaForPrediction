@@ -1,23 +1,38 @@
 ##=======================================================================================
 ## Data conversion functions in R
-## Copyright (C) 2015  Anton Antonov
 ##
-## This program is free software: you can redistribute it and/or modify
-## it under the terms of the GNU General Public License as published by
-## the Free Software Foundation, either version 3 of the License, or
-## (at your option) any later version.
-## 
-## This program is distributed in the hope that it will be useful,
-## but WITHOUT ANY WARRANTY; without even the implied warranty of
-## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-## GNU General Public License for more details.
-## 
-## You should have received a copy of the GNU General Public License
-## along with this program.  If not, see <http://www.gnu.org/licenses/>.
+## BSD 3-Clause License
+##
+## Copyright (c) 2015, Anton Antonov
+## All rights reserved.
+##
+## Redistribution and use in source and binary forms, with or without
+## modification, are permitted provided that the following conditions are met:
+##
+## * Redistributions of source code must retain the above copyright notice, this
+## list of conditions and the following disclaimer.
+##
+## * Redistributions in binary form must reproduce the above copyright notice,
+## this list of conditions and the following disclaimer in the documentation
+## and/or other materials provided with the distribution.
+##
+## * Neither the name of the copyright holder nor the names of its
+## contributors may be used to endorse or promote products derived from
+## this software without specific prior written permission.
+##
+## THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+## AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+## IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+## DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+## FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+## DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+##          SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+## CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+## OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+## OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ## 
 ## Written by Anton Antonov, 
-## antononcube@gmail.com, 
-## 7320 Colbury Ave, 
+## antononcube@gmail.com,
 ## Windermere, Florida, USA.
 ##
 ##=======================================================================================
@@ -35,6 +50,9 @@ library(plyr)
 library(stringr)
 library(reshape2)
 library(Matrix)
+library(lubridate)
+library(dplyr)
+library(purrr)
 
 #' @description Partition combined columns
 #' @param dataColumn data vector
@@ -252,6 +270,23 @@ MakePiecewiseFunction <- function( points, tags=NULL ) {
   eval( parse( text=funcStr ) )
 }
 
+#' Categorize to quantile intervals.
+#' @param vec A numerical vector to be categorized.
+#' @param probs A numerical vector to be given to 
+#' the argument \code{probs} of \code{\link{quantile}}.
+#' @param breaks A the breaks to be used.
+#' If NULL \code{quantile} is used.
+#' @return A character vector.
+CategorizeToQuantileIntervals <- function( vec, breaks = NULL, probs = seq(0,1,0.1) ) {
+  if( missing(breaks) || is.null(breaks) ) {
+    breaks <- unique( quantile( vec, probs, na.rm = T) )
+  }
+  intervalNames <- purrr::map2_chr( breaks[-length(breaks)], breaks[-1], function(x, y) paste0( x, "≤v<", y )) 
+  resVec <- findInterval( x = vec, vec = breaks, all.inside = T )
+  resVec <- intervalNames[resVec]
+  resVec
+}
+
 #' @param itemRows a data frame of flat content data
 #' @param tagTypeColName column name of the relationship to be ingested inge in itemRows
 #' @param itemIDName 
@@ -411,4 +446,85 @@ ToColumnValueIncidenceMatrix <- function( mat, rowNames = TRUE, colNames = TRUE 
    }
    
    resMat
+}
+
+
+##===========================================================
+## Conversions to D3 network specifications
+##===========================================================
+
+SparseMatrixTripletsToD3NetworkSpec <- function( triplets ) {
+  nodes <- unique(as.character(c(triplets[[1]],triplets[[2]])))
+  rules <- setNames( seq(0,length(nodes)-1), nodes)
+  triplets[[1]] <- as.integer( rules[ triplets[[1]] ] )
+  triplets[[2]] <- as.integer( rules[ triplets[[2]] ] )
+  list( Nodes = data.frame(name = nodes, stringsAsFactors = F), Links = setNames( as.data.frame(triplets), c("source","target","value") ) )
+} 
+
+SparseMatrixToD3NetworkSpec <- function( smat, smat2 = NULL ) {
+  if( is.null(smat2) ) {
+    SparseMatrixTripletsToD3NetworkSpec(SparseMatrixToTriplets(smat))
+  } else {
+    SparseMatrixTripletsToD3NetworkSpec( rbind( SparseMatrixToTriplets(smat), SparseMatrixToTriplets(smat2) ) )
+  }
+}
+
+SparseMatrixListToD3NetworkSpec <- function( smats ) {
+  
+  SparseMatrixTripletsToD3NetworkSpec( do.call( rbind, Map( f = SparseMatrixToTriplets, smats ) ) )
+  
+}
+
+SparseMatrixToD3NetworkSpecFirst <- function( smat ) {
+  qMatNodes <- c(rownames(smat),colnames(smat))
+  qMatNodes <- data.frame(name = qMatNodes, stringsAsFactors = F)
+  rownames(smat) <- 0:(nrow(smat)-1)
+  colnames(smat) <- nrow(smat) + (0:(ncol(smat)-1))
+  qMatLinks <- setNames(as.data.frame(SparseMatrixToTriplets(smat)), c("source","target","value"))
+  qMatLinks$source <- as.integer(qMatLinks$source)
+  qMatLinks$target <- as.integer(qMatLinks$target)
+  list( Nodes = qMatNodes, Links = qMatLinks)
+}
+
+
+##===========================================================
+## Add date tags
+##===========================================================
+
+#' @description Aggregate values for given column names.
+#' @param data a data frame
+#' @param dateColumnName a date column over which the aggregation is done
+AddDateTags <- function( data, dateColumnName ) {
+
+  dateCol <- enquo(dateColumnName)
+
+  qRes <-
+  data %>%
+    dplyr::mutate( DayBoundary = ceiling_date( !!dateCol, "days" ) ) %>%
+    dplyr::mutate( MonthBoundary = ceiling_date( !!dateCol, "months" ) ) %>%
+    dplyr::mutate( YearBoundary = ceiling_date( !!dateCol, "years" ) ) %>%
+    dplyr::mutate( Month = months( !!dateCol ), Weekday = weekdays( !!dateCol ) ) %>%
+    dplyr::mutate( Weekday = factor( Weekday, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" ) ) ) %>%
+    dplyr::mutate( Month = factor( Month, levels = c( "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" )  ) )
+
+  qRes
+}
+
+##===========================================================
+## Summary parititiong
+##===========================================================
+
+#' @description Print the summary of data frame in a series of specified number of columns.
+#' @param data a data frame
+#' @param numberOfColumns number of columns for the partitioning
+SummaryPartitioned <- function( data, numberOfColumns = 3, ...) {
+
+  k <- 1
+
+  while( k <= ncol(data)) {
+    if( k > 1 ) { cat("\n") }
+    k1 <- min( ncol(data), k + numberOfColumns-1 )
+    print( summary( data[, k:k1, drop=F ], ... ) )
+    k <- k + numberOfColumns
+  }
 }

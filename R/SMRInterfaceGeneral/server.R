@@ -35,6 +35,9 @@
 ##      these IDs are also rownames of itemSMR$M;
 ## 3. itemDataColNames -- which column names of itemData should be used in the search
 ##      and recommendation results.
+## 4. itemListIDsSplitPattern -- a split pattern for the separator of the items list
+##      and ratings list. By default is "\\W". (But "," should be used if the row IDs
+##      have white spaces in them.)
 ##
 ##=======================================================================================
 
@@ -42,11 +45,28 @@
 library(shiny)
 library(DT)
 
-searchColName <- "title"
-itemDataIDColName <- "id"
-itemDataColNames <- c("id", "title", "year", "rated", "imdb_rating" )
 
-shinyServer(function(input, output) {
+if( !exists("searchColName") || !( searchColName %in% colnames(itemData) ) ) {
+  stop( "The variable searchColName is not defined or it is not a column name in itemData.")
+}
+
+if( !exists("itemDataIDColName") || !( itemDataIDColName %in% colnames(itemData) ) ) {
+  stop( "The variable itemDataIDColName is not defined or it is not a column name in itemData.")
+}
+
+if( !exists("itemDataColNames") || mean( itemDataColNames %in% colnames(itemData) ) < 1 ) {
+  stop( "The variable itemDataColNames is not defined or not all of its values are column names in itemData.")
+}
+
+# searchColName <- "title"
+# itemDataIDColName <- "id"
+# itemDataColNames <- c("id", "title", "year", "rated", "imdb_rating" )
+
+if( !exists("itemListIDsSplitPattern") ) {
+  itemListIDsSplitPattern <- "\\W"
+}
+
+shinyServer(function(input, output, session) {
 
   tagTypeSFactors <- reactive({
 
@@ -65,12 +85,13 @@ shinyServer(function(input, output) {
 
 
   itemListIDs <- reactive({
-    ss <- strsplit( input$itemList, split = "\\W", fixed = FALSE )[[1]]
+    ss <- strsplit( input$itemList, split = itemListIDsSplitPattern, fixed = FALSE )[[1]]
+    ss <- gsub("^[[:space:]]", "", ss)
     ss[ nchar(ss) > 0 ]
   })
 
   itemListRatings <- reactive({
-    res <- strsplit( x = input$itemRatings, split = "\\W", fixed = FALSE )[[1]]
+    res <- strsplit( x = input$itemRatings, split = itemListIDsSplitPattern, fixed = FALSE )[[1]]
     res <- as.numeric( res[ nchar(res) > 0 ] )
     if ( length(res) < length( itemListIDs() ) ) {
       res <- c( res, rep(3, length( itemListIDs() ) - length(res) ) )
@@ -172,7 +193,7 @@ shinyServer(function(input, output) {
       res <- merge( x = recommendations(), y = itemData[, itemDataColNames ], by.x = itemSMR$ItemColumnName, by.y = itemDataIDColName, all.x = TRUE )
       ## This is done because merge breaks the order.
       res[ match( resIDs, res[[1]] ), ]
-    }, rownames = FALSE, filter = 'top', options = list(pageLength = 12, autoWidth = FALSE) ) })
+    }, rownames = FALSE, filter = 'top', options = list(pageLength = 12, autoWidth = FALSE), selection = list( mode = 'single', selected = c(1)) ) })
 
   output$recsProofs <-
     DT::renderDataTable({ datatable({
@@ -200,4 +221,13 @@ shinyServer(function(input, output) {
     cbind( res, TagType = laply( res$Index, function(x) SMRTagType( itemSMR, x ) ) )
   }, rownames = FALSE, filter = 'top', options = list(pageLength = 12, autoWidth = FALSE) ) })
 
+  output$uproof <- DT::renderDataTable({ datatable({
+      sRow <- input$recs_rows_selected
+      if( is.null(sRow) ) { NULL 
+      } else { 
+        itemID <- recommendations()[sRow,2]
+        SMRMetadataProofs( smr = itemSMR, toBeLovedItem = c(itemID), profile = userProfile(), normalizeScores = TRUE)
+      }
+  }, rownames = FALSE, filter = 'top', options = list(pageLength = 12, autoWidth = FALSE) ) })
+  
 })

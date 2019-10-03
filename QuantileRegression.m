@@ -1,5 +1,5 @@
 (*
-    Quantile regression Mathematica package
+    Quantile Regression Mathematica package
     Copyright (C) 2014  Anton Antonov
 
     This program is free software: you can redistribute it and/or modify
@@ -21,7 +21,7 @@
 *)
 
 (*
-    Mathematica is (C) Copyright 1988-2016 Wolfram Research, Inc.
+    Mathematica is (C) Copyright 1988-2019 Wolfram Research, Inc.
 
     Protected by copyright law and international treaties.
 
@@ -32,35 +32,84 @@
 *)
 
 (* Version 1.1 *)
-(* 
-  This package has two functions, QuantileRegressionFit and QuantileRegression. 
+(*
 
-  1. QuantileRegressionFit
+  # In brief
+
+  The two main functions of this package are QuantileRegressionFit and QuantileRegression.
+
+  The functions QuantileEnvelope and QuantileEnvelopeRegion are still experimental, but developed enough to be useful.
+
+  For an introduction to Quantile Regression see the article [RK1] and the book [RK2].
+
+  The implementations in this package are explained in [AA1, AA2, AA3].
+
+  The software monad QRMon, [AA4, AAp1], for rapid specification of Quantile Regression workflows is based on
+  this package. The package [AAp1] and the documents [AA4, AA4a] provide extensive usage examples of Quantile Regression.
+
+
+  # QuantileRegressionFit
+
   The arguments and the result of QuantileRegressionFit are very similar to those of the function Fit.
+
   In order to find the quantile functions that fit through the data QuantileRegressionFit can use
   LinearProgramming, Minimize, or NMinimize through the Method option,
   e.g. Method->Minimize or Method->{LinearProgramming, Method->"Simplex", Tolerance->10^-6.0} .
+
   Using Minimize can be very slow for large data sets -- that method is included for didactic purposes.
 
-  The linear programming implementation is based on the (non-dual) formulation in the article 
- 
-  Roger Koenker, Gilbert Bassett, Jr., "Regression Quantiles", Econometrica, Vol. 46, No. 1. (Jan., 1978), pp. 33-50.
+  The linear programming implementation is based on the (non-dual) formulation in the article [RK1].
 
   I experimented with using DualLinearProgramming (provided by Mathematica) and with the dozen experiments I made
   I obtained the same results for the same computing time.
 
-  2. QuantileRegression
+
+  # QuantileRegression
+
   The function QuantileRegression uses B-splines in order to calculate the regression quantiles.
+
   The regression quantiles are returned as pure functions.
+
   The option InterpolationOrder can be used to specify the order of the splines.
+
   Similar to QuantileRegressionFit the Method option can take LinearProgramming, Minimize, and NMinimize specifications.
+
+
+  # References
+
+  [RK1] Roger Koenker, Gilbert Bassett, Jr., "Regression Quantiles", Econometrica, Vol. 46, No. 1. (Jan., 1978), pp. 33-50.
+
+  [RK2] Roger Koenker, Quantile Regression, ‪Cambridge University Press, 2005‬.
+
+  [AA1] Anton Antonov, "Quantile regression through linear programming", (2013), MathematicaForPrediction at WordPress.
+        URL: https://mathematicaforprediction.wordpress.com/2013/12/16/quantile-regression-through-linear-programming/ .
+
+  [AA2] Anton Antonov, "Quantile regression through linear programming", (2013), MathematicaForPrediction at GitHub.
+        URL: https://github.com/antononcube/MathematicaForPrediction/blob/master/Documentation/Quantile%20regression%20through%20linear%20programming.pdf .
+
+  [AA3] Anton Antonov, "Quantile regression with B-splines", (2014), MathematicaForPrediction at WordPress.
+        URL: https://mathematicaforprediction.wordpress.com/2014/01/01/quantile-regression-with-b-splines/ .
+
+  [AA4] Anton Antonov, "A monad for Quantile Regression workflows", (2018), MathematicaForPrediction at WordPress.
+        URL: https://mathematicaforprediction.wordpress.com/2018/08/01/a-monad-for-quantile-regression-workflows/ .
+
+  [AA4a] Anton Antonov, "A monad for Quantile Regression workflows", (2018), MathematicaForPrediction at WordPres.
+         URL: https://github.com/antononcube/MathematicaForPrediction/blob/master/MarkdownDocuments/A-monad-for-Quantile-Regression-workflows.md .
+
+  [AAp1] Anton Antonov, Monadic Quantile Regression Mathematica package, (2018), MathematicaForPrediction at GitHub.
+         URL: https://github.com/antononcube/MathematicaForPrediction/blob/master/MonadicProgramming/MonadicQuantileRegression.m .
 
 *)
 
-(* For version 1.1 implemented quantile regression with B-splines. 
+(*
+   For version 1.1 implemented quantile regression with B-splines.
+
    Renamed the original function QuantileRegression to QuantileRegressionFit.
+
    Overloading the original function QuantileRegression with the B-splines implementation is not a good idea because:
+
    1. the original quantile regression function returns function expressions,
+
    2. the B-spline quantile regression function returns anonymous functions.
 *)
 
@@ -70,26 +119,38 @@
 
    2014.11.01
    Added experimental implementation for finding of the points of quantile regression envelopes for 2D data.
+
+   2019.02.16
+   Better explanations in Markdown style with added references. Minor code changes.
 *)
 
 (*
   TODO
-  1. Better messages.
-  2. Creating (more) signatures with default values.
-     E.g. no knots specification and/or no quantile specifications for QuantileRegression.
+  1. [ ] Return a vector with the weights of the used basis functions.
+  2. [ ] Better messages.
+  3. [ ] Creating (more) signatures with default values.
+         E.g. no knots specification and/or no quantile specifications for QuantileRegression.
+         Maybe not that needed because of QRMon, [AA4a, AAp1].
+
 *)
 
 BeginPackage["QuantileRegression`"]
 
-QuantileRegressionFit::usage = "QuantileRegression[data,funs,var,qs] finds the regression quantiles corresponding to the quantiles qs for a list of data as linear combinations of the functions funs of the variable var."
+QuantileRegressionFit::usage = "QuantileRegressionFit[data,funs,var,qs] finds the regression quantiles corresponding \
+to the quantiles qs for a list of data as linear combinations of the functions funs of the variable var.";
 
-QuantileRegression::usage = "QuantileRegression[data,ks_List,qs] finds the regression quantiles corresponding to the quantiles qs for a list of data as linear combinations of splines generated over the knots ks. With the signature QuantileRegression[data,n_Integer,qs] n equally spaced knots are generated. The order of the splines is specified with the option InterpolationOrder."
+QuantileRegression::usage = "QuantileRegression[data,ks_List,qs] finds the regression quantiles corresponding \
+to the quantiles qs for a list of data as linear combinations of splines generated over the knots ks. \
+With the signature QuantileRegression[data,n_Integer,qs] n equally spaced knots are generated. \
+The order of the splines is specified with the option InterpolationOrder.";
 
-QuantileEnvelope::usage = "QuantileEnvelope[data_?MatrixQ,qs:(_?NumberQ|{_?NumberQ..}),ndir_Integer] experimental implementation of quantile envelopes points finding."
+QuantileEnvelope::usage = "QuantileEnvelope[data_?MatrixQ,qs:(_?NumberQ|{_?NumberQ..}),ndir_Integer] \
+experimental implementation of quantile envelopes points finding.";
 
-QuantileEnvelopeRegion::usage = "QuantileEnvelopeRegion[data_?MatrixQ,q_?NumberQ,ndir_Integer] experimental implementation of 2D or 3D quantile envelope region finding."
+QuantileEnvelopeRegion::usage = "QuantileEnvelopeRegion[data_?MatrixQ,q_?NumberQ,ndir_Integer] \
+experimental implementation of 2D or 3D quantile envelope region finding.";
 
-Begin["`Private`"]
+Begin["`Private`"];
 
 (************************************************************)
 (* QuantileRegressionFit                                    *)
@@ -357,9 +418,9 @@ MinimizeSplineQuantileRegression[methodFunc_, dataArg_?MatrixQ, knotsArg : {_?Nu
   ] /; order > 0;
 
 
-	   (**************************************************************)
-	   (* QuantileEnvelope                                           *)
-	   (**************************************************************)
+(**************************************************************)
+(* QuantileEnvelope                                           *)
+(**************************************************************)
 	   
 QuantileEnvelope::qenargs = "Three arguments are expected, two column data matrix, quantiles, and a number of curve points.";
 QuantileEnvelope::qemat = "The first argument is expected to be a numeric two column data matrix.";
@@ -367,7 +428,8 @@ QuantileEnvelope::qeqs = "The second argument is expected to be a number or a li
 QuantileEnvelope::qen = "The third argument is expected to be an integer greater than 2.";
 
 Clear[QuantileEnvelope]
-Options[QuantileEnvelope] = {"Tangents" -> True };
+Options[QuantileEnvelope] =
+    {"Tangents" -> True, "StandardizingShiftFunction" -> Mean, "StandardizingScaleFunction" -> InterquartileRange };
 QuantileEnvelope[data_, qs_, n_, opts : OptionsPattern[]] :=
   Block[{},
    If[! MatrixQ[data, NumberQ],
@@ -389,16 +451,23 @@ Clear[QuantileEnvelopeSimple]
 Options[QuantileEnvelopeSimple] = Options[QuantileEnvelope];
 QuantileEnvelopeSimple[data_?MatrixQ, q_?NumberQ, n_Integer, opts : OptionsPattern[]] := QuantileEnvelopeSimple[data, {q}, n, opts];
 QuantileEnvelopeSimple[dataArg_?MatrixQ, qs : {_?NumberQ ..}, n_Integer, opts : OptionsPattern[]] :=
-  Block[{data = dataArg, center, scale, rmat, rmats, qfuncs, x1, x2, y1, rqfuncs, intPoints, t, tangentsQ},
+  Block[{data = dataArg, center, scale, rmat, rmats, qfuncs, x1, x2, y1, rqfuncs, intPoints, t,
+    tangentsQ, sdShiftFunc, sdScaleFunc},
    
    (* Option values *)   
    tangentsQ = TrueQ[OptionValue[QuantileEnvelopeSimple, "Tangents"]];
  		
    (* Standardize *)
-   center = Mean /@ Transpose[data];
-   scale = InterquartileRange /@ Transpose[data];
+   sdShiftFunc = OptionValue[QuantileEnvelopeSimple, "StandardizingShiftFunction"];
+   If[ TrueQ[sdShiftFunc===Automatic], sdShiftFunc = Mean];
+
+   sdScaleFunc = OptionValue[QuantileEnvelopeSimple, "StandardizingScaleFunction"];
+   If[ TrueQ[sdScaleFunc===Automatic], sdScaleFunc = InterquartileRange];
+
+   center = sdShiftFunc @ data;
+   scale =  sdScaleFunc /@ Transpose[data];
    data = Map[(# - center)/scale &, data];
-   
+
    (* Rotation matrices *)
    rmat = N[RotationMatrix[2 \[Pi]/n]];
    rmats = NestList[rmat.# &, rmat, n - 1];
@@ -422,13 +491,14 @@ QuantileEnvelopeSimple[dataArg_?MatrixQ, qs : {_?NumberQ ..}, n_Integer, opts : 
    intPoints
   ];
 
+
 (**************************************************************)
 (* QuantileEnvelopeRegion                                     *)
 (**************************************************************)
 
 QuantileEnvelopeRegion::qemat = "The first argument is expected to be a numeric two or three column data matrix.";
 
-Clear[QuantileEnvelopeRegion]
+Clear[QuantileEnvelopeRegion];
 QuantileEnvelopeRegion[points_?MatrixQ, quantile_?NumberQ, numberOfDirections_Integer] :=
   Which[
     Dimensions[points][[2]] == 2, QuantileEnvelopeRegion2D[points, quantile, numberOfDirections ],
@@ -437,7 +507,7 @@ QuantileEnvelopeRegion[points_?MatrixQ, quantile_?NumberQ, numberOfDirections_In
     Message[QuantileEnvelopeRegion::qemat]; $Failed
   ];
 
-Clear[QuantileEnvelopeRegion2D]
+Clear[QuantileEnvelopeRegion2D];
 QuantileEnvelopeRegion2D[points_?MatrixQ, quantile_?NumberQ, numberOfDirections_Integer] :=
     Block[{nd = numberOfDirections, dirs, rmats, qDirPoints, qRegion},
       dirs =
@@ -453,7 +523,7 @@ QuantileEnvelopeRegion2D[points_?MatrixQ, quantile_?NumberQ, numberOfDirections_
     ] /; Dimensions[points][[2]] == 2 && 0 < quantile <= 1;
 
 
-Clear[QuantileEnvelopeRegion3D]
+Clear[QuantileEnvelopeRegion3D];
 QuantileEnvelopeRegion3D[points_?MatrixQ, quantile_?NumberQ, numberOfDirections_Integer] :=
     Block[{nd = numberOfDirections, dirs, rmats, qDirPoints, qRegion},
       dirs =
@@ -471,6 +541,6 @@ QuantileEnvelopeRegion3D[points_?MatrixQ, quantile_?NumberQ, numberOfDirections_
       qRegion
     ] /; Dimensions[points][[2]] == 3 && 0 < quantile <= 1;
 	   
-End[]
+End[];
 
 EndPackage[]
