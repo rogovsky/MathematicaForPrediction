@@ -57,7 +57,7 @@ VerificationTest[(* 1 *)
   ,
   True
   ,
-  TestID->"LoadPackage"
+  TestID -> "LoadPackage"
 ];
 
 
@@ -193,7 +193,7 @@ VerificationTest[ (* 9 *)
         LSAMonBind,
         lsaObj,
         {
-          LSAMonExtractTopics[12, "MinNumberOfDocumentsPerTerm" -> 10, "NumberOfInitializingDocuments" -> 12, "MaxSteps" -> 12, "PrintProfilingInfo" -> False],
+          LSAMonExtractTopics[12, "MinNumberOfDocumentsPerTerm" -> 10, "NumberOfInitializingDocuments" -> 12, "MaxSteps" -> 12, "ProfilingPrints" -> False],
           LSAMonMakeTopicsTable
         }
       ];
@@ -227,7 +227,7 @@ VerificationTest[ (* 11 *)
         {
           LSAMonMakeDocumentTermMatrix[{}, Automatic],
           LSAMonApplyTermWeightFunctions["IDF", "None", "Cosine"],
-          LSAMonExtractTopics[12, "MinNumberOfDocumentsPerTerm" -> 10, "NumberOfInitializingDocuments" -> 12, "MaxSteps" -> 12, "PrintProfilingInfo" -> False],
+          LSAMonExtractTopics[12, "MinNumberOfDocumentsPerTerm" -> 10, "NumberOfInitializingDocuments" -> 12, "MaxSteps" -> 12, "ProfilingPrints" -> False],
           LSAMonMakeTopicsTable
         }
       ];
@@ -235,8 +235,8 @@ VerificationTest[ (* 11 *)
   Keys[LSAMonBind[ lsaObj3, LSAMonTakeContext] ]
   ,
   {"documents", "documentTermMatrix", "terms", "stopWords", "stemmingRules", "weightedDocumentTermMatrix", "globalWeights",
-   "globalWeightFunction", "localWeightFunction", "normalizerFunction",
-   "W", "H", "topicColumnPositions", "automaticTopicNames", "method", "topicsTable"}
+    "globalWeightFunction", "localWeightFunction", "normalizerFunction",
+    "W", "H", "topicColumnPositions", "automaticTopicNames", "method", "topicsTable"}
   ,
   TestID -> "Topic-extraction-3"
 ];
@@ -263,7 +263,7 @@ VerificationTest[ (* 13 *)
         LSAMonTakeValue
       }
     ],
-    { { _String, { _String .. } } .. }
+    <| (_String -> { _String .. }) .. |>
   ]
   ,
   True
@@ -286,7 +286,7 @@ VerificationTest[ (* 14 *)
         }];
 
   SSparseMatrixQ[tMat] &&
-(*      RowsCount[tMat] == Length[aTextHamlet] &&*)
+      (*      RowsCount[tMat] == Length[aTextHamlet] &&*)
       Sort[ColumnNames[tMat]] == Sort[Intersection[ColumnNames[tMat], LSAMonBind[ lsaObj3, LSAMonTakeAutomaticTopicNames ] ]]
   ,
   True
@@ -359,7 +359,7 @@ VerificationTest[ (* 21 *)
 
 VerificationTest[ (* 22 *)
   pos = LSAMonBind[ lsaObj3, LSAMonTakeTopicColumnPositions ];
-  ColumnNames[ LSAMonBind[lsaObj3, LSAMonTakeH] ] == ColumnNames[ LSAMonBind[lsaObj3, LSAMonTakeDocumentTermMatrix]] [[ pos ]]
+  ColumnNames[ LSAMonBind[lsaObj3, LSAMonTakeH] ] == ColumnNames[ LSAMonBind[lsaObj3, LSAMonTakeDocumentTermMatrix]][[ pos ]]
   ,
   True
   ,
@@ -394,6 +394,109 @@ VerificationTest[ (* 25 *)
   True
   ,
   TestID -> "Take-StemmingRules-1"
+];
+
+
+(*************************************************************)
+(* Topic extraction with external matrices                   *)
+(*************************************************************)
+
+VerificationTest[ (* 26 *)
+  lsaObj4 =
+      Fold[
+        LSAMonBind,
+        LSAMonUnit[],
+        {
+          LSAMonSetDocumentTermMatrix[ LSAMonBind[ lsaObj3, LSAMonTakeDocumentTermMatrix] ],
+          LSAMonApplyTermWeightFunctions["IDF", "None", "Cosine"],
+          LSAMonExtractTopics[12, "MinNumberOfDocumentsPerTerm" -> 10, "NumberOfInitializingDocuments" -> 12, "MaxSteps" -> 12, "ProfilingPrints" -> False],
+          LSAMonMakeTopicsTable
+        }
+      ];
+
+  Sort@Keys[LSAMonBind[ lsaObj4, LSAMonTakeContext] ]
+  ,
+  Sort@{"automaticTopicNames", "documentTermMatrix", "globalWeightFunction",
+    "globalWeights", "H", "localWeightFunction", "method",
+    "normalizerFunction", "terms", "topicColumnPositions", "topicsTable",
+    "W", "weightedDocumentTermMatrix"}
+  ,
+  TestID -> "Topic-extraction-5"
+];
+
+
+VerificationTest[ (* 27 *)
+  lsaObj4 =
+      Fold[
+        LSAMonBind,
+        LSAMonUnit[],
+        {
+          LSAMonSetWeightedDocumentTermMatrix[ LSAMonBind[ lsaObj3, LSAMonTakeWeightedDocumentTermMatrix] ],
+          LSAMonExtractTopics[12, "MinNumberOfDocumentsPerTerm" -> 10, "NumberOfInitializingDocuments" -> 12, "MaxSteps" -> 12, "ProfilingPrints" -> False],
+          LSAMonMakeTopicsTable
+        }
+      ];
+
+  Sort@Keys[LSAMonBind[ lsaObj4, LSAMonTakeContext] ]
+  ,
+  Sort@{"automaticTopicNames", "H", "method", "terms", "topicColumnPositions", "topicsTable", "W", "weightedDocumentTermMatrix"}
+  ,
+  TestID -> "Topic-extraction-6"
+];
+
+
+VerificationTest[ (* 28 *)
+  aBasisVectors =
+      Fold[
+        LSAMonBind,
+        lsaObj3,
+        {
+          LSAMonInterpretBasisVector[All, "NumberOfTerms" -> 10],
+          LSAMonTakeValue
+        }
+      ];
+  MatchQ[ aBasisVectors, Association[ (_ -> _Association) .. ] ] &&
+      Keys[aBasisVectors] == RowNames[ LSAMonBind[lsaObj3, LSAMonTakeContext]["H"] ]
+  ,
+  True
+  ,
+  TestID -> "Interpret-basis-vector-1"
+];
+
+
+VerificationTest[ (* 28 *)
+  aBasisVectors =
+      Fold[
+        LSAMonBind,
+        lsaObj3,
+        {
+          LSAMonInterpretBasisVector[{1, 3, 5}, "NumberOfTerms" -> 10],
+          LSAMonTakeValue
+        }
+      ];
+  MatchQ[ aBasisVectors, Association[ (_ -> _Association) .. ] ]
+  ,
+  True
+  ,
+  TestID -> "Interpret-basis-vector-2"
+];
+
+
+VerificationTest[ (* 29 *)
+  res =
+      Fold[
+        LSAMonBind,
+        lsaObj3,
+        {
+          LSAMonMakeTopicsTable,
+          LSAMonTakeValue
+        }
+      ];
+  MatchQ[ res, {_TableForm..} ]
+  ,
+  True
+  ,
+  TestID -> "Topics-table-1"
 ];
 
 

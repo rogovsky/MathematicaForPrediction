@@ -32,8 +32,8 @@
 *)
 (* Created by the Wolfram Language Plugin for IntelliJ, see http://wlplugin.halirutan.de/ *)
 
-(* :Title: GNNMon *)
-(* :Context: GNNMon` *)
+(* :Title: MonadicGeometricNearestNeighbors *)
+(* :Context: MonadicGeometricNearestNeighbors` *)
 (* :Author: Anton Antonov *)
 (* :Date: 2019-09-22 *)
 
@@ -61,7 +61,7 @@
     gnnObj =
       GNNMonUnit[points]⟹
        GNNMonMakeNearestFunction[DistanceFunction -> EuclideanDistance]⟹
-       GNNMonComputeThresholds[10, Mean, OutlierIdentifier -> SPLUSQuartileIdentifierParameters];
+       GNNMonComputeThresholds[10, "AggregationFunction" -> Mean, "OutlierIdentifier" -> SPLUSQuartileIdentifierParameters];
 
     newPoints = {{-6, 2.5}, {4.5, 16}};
 
@@ -72,7 +72,7 @@
 
     (* {{-6, 2.5}} *)
 
-    ListPlot[<|"Original points" -> points, "\"Does not belong\"" -> newAnomalies, "New points" -> newPoints|>,
+    ListPlot[<|"Original points" -> points, "\"Does not belong\"" -> doesNotBelong, "New points" -> newPoints|>,
      PlotRange -> All, 
      PlotStyle -> {{GrayLevel[0.6]}, {Pink, PointSize[0.022]}, {Blue, PointSize[0.01]}},
      ImageSize -> Large, PlotTheme -> "Detailed"]
@@ -111,7 +111,7 @@ If[Length[DownValues[OutlierIdentifiers`OutlierIdentifier]] == 0,
 (* Package definition                                         *)
 (**************************************************************)
 
-BeginPackage["GNNMon`"];
+BeginPackage["MonadicGeometricNearestNeighbors`"];
 (* Exported symbols added here with SymbolName::usage *)
 
 $GNNMonFailure::usage = "Failure symbol for GNNMon.";
@@ -134,6 +134,8 @@ of pnts according to monad's points.";
 
 GNNMonRescale::usage = "GNNMonRescale non-monadic rescaling.";
 
+GNNMonComputeProximityMatrix::usage = "GNNMonComputeProximityMatrix[n_Integer, opts] computes the proximity \
+(similarity) matrix using the matrix context[\"nearestNeighborsDistances\"].";
 
 Begin["`Private`"];
 
@@ -148,11 +150,13 @@ Needs["SSparseMatrix`"];
 
 (* Generate base functions of GNNMon monad (through StMon.) *)
 
-GenerateStateMonadCode[ "GNNMon`GNNMon", "FailureSymbol" -> $GNNMonFailure, "StringContextNames" -> False ];
+GenerateStateMonadCode[ "MonadicGeometricNearestNeighbors`GNNMon", "FailureSymbol" -> $GNNMonFailure, "StringContextNames" -> False ];
 
 GenerateMonadAccessors[
-  "GNNMon`GNNMon",
-  { "data", "nearestFunction", "distanceFunction", "numberOfNNs", "nearestNeighborDistances",
+  "MonadicGeometricNearestNeighbors`GNNMon",
+  { "data",
+    "nearestFunction", "nearestIndexDistanceFunction", "distanceFunction",
+    "numberOfNNs", "nearestNeighborDistances",
     "aggregationFunction", "radius", "lowerThreshold", "UpperThreshold" },
   "FailureSymbol" -> $GNNMonFailure ];
 
@@ -233,7 +237,7 @@ GNNMonMakeNearestFunction[$GNNMonFailure] := $GNNMonFailure;
 GNNMonMakeNearestFunction[xs_, context_Association] := GNNMonMakeNearestFunction[ Options[GNNMonMakeNearestFunction] ][xs, context];
 
 GNNMonMakeNearestFunction[ opts : OptionsPattern[] ][xs_, context_Association] :=
-    Block[{data, distFunc, nf},
+    Block[{data, distFunc, nf, nfd},
 
       distFunc = OptionValue[ GNNMonMakeNearestFunction, DistanceFunction ];
 
@@ -244,7 +248,9 @@ GNNMonMakeNearestFunction[ opts : OptionsPattern[] ][xs_, context_Association] :
 
       nf = Nearest[ data, DistanceFunction -> distFunc ];
 
-      GNNMonUnit[ xs, Join[context, <| "data" -> data, "nearestFunction" -> nf, "distanceFunction" -> distFunc |> ] ]
+      nfd = Nearest[ Values[data] -> {"Index", "Distance"}, DistanceFunction -> distFunc ];
+
+      GNNMonUnit[ xs, Join[context, <| "data" -> data, "nearestFunction" -> nf, "nearestIndexDistanceFunction" -> nfd, "distanceFunction" -> distFunc |> ] ]
     ];
 
 GNNMonMakeNearestFunction[___][xs_, context_Association] :=
@@ -256,11 +262,12 @@ GNNMonMakeNearestFunction[___][xs_, context_Association] :=
       $GNNMonFailure
     ];
 
+
 (**************************************************************)
 (* Find distance from a point to matrix rows                  *)
 (**************************************************************)
 
-ClearAll[GNNMonComputeThresholds];
+Clear[GNNMonComputeThresholds];
 
 SyntaxInformation[GNNMonComputeThresholds] = { "ArgumentsPattern" -> { _, _., OptionsPattern[] } };
 
@@ -271,7 +278,7 @@ GNNMonComputeThresholds[$GNNMonFailure] := $GNNMonFailure;
 GNNMonComputeThresholds[xs_, context_Association] := $GNNMonFailure;
 
 GNNMonComputeThresholds[ nTopNNs_Integer, opts : OptionsPattern[] ][xs_, context_Association] :=
-    Block[{outFunc, aggrFunc, data, nf, distFunc, nns, means, ths},
+    Block[{outFunc, aggrFunc, data, nfd, nns, means, ths, nnsMat},
 
       outFunc = OptionValue[ GNNMonComputeThresholds, "OutlierIdentifier" ];
       aggrFunc = OptionValue[ GNNMonComputeThresholds, "AggregationFunction" ];
@@ -279,22 +286,29 @@ GNNMonComputeThresholds[ nTopNNs_Integer, opts : OptionsPattern[] ][xs_, context
       data = GNNMonTakeData[xs, context];
       If[ TrueQ[ data === $GNNMonFailure ], Return[$GNNMonFailure] ];
 
-      nf = GNNMonTakeNearestFunction[xs, context];
-      If[ TrueQ[ nf === $GNNMonFailure ], Return[$GNNMonFailure] ];
+      nfd = GNNMonTakeNearestIndexDistanceFunction[xs, context];
+      If[ TrueQ[ nfd === $GNNMonFailure ], Return[$GNNMonFailure] ];
 
-      distFunc = GNNMonTakeDistanceFunction[xs, context];
-
-      nns = Map[ nf[ #, nTopNNs ] &, data ];
+      (* Using nfd in order to speed-up the computations. *)
+      nns = Map[ nfd[ #, nTopNNs + 1 ] &, Values[data] ];
 
       means =
           Association @
-              KeyValueMap[ Function[{k, v}, k -> aggrFunc[Map[distFunc[data[[k]], data[[#]]] &, Complement[v, {k}]]]], nns];
+              MapIndexed[ Function[{v, ind}, ind[[1]] -> aggrFunc[ DeleteCases[ v[[All, 2]], {ind[[1]], _} ] ] ], nns];
+
+      means = AssociationThread[ Keys[data][[ Keys[means] ]], Values[means] ];
 
       ths = outFunc[ N @ Values[means] ];
 
+      nns = Join @@ MapIndexed[ Flatten /@ Thread[{#2[[1]], #1}] &, nns ];
+
+      nns[[All, 1]] = Keys[ data ][[ nns[[All , 1]] ]];
+      nns[[All, 2]] = Keys[ data ][[ nns[[All, 2]] ]];
+      nnsMat = MakeSSparseMatrix[ nns ];
+
       GNNMonUnit[ ths,
         Join[context, <|
-          "nearestNeighborDistances" -> means,
+          "nearestNeighborDistances" -> nnsMat,
           "numberOfNNs" -> nTopNNs,
           "radius" -> aggrFunc[ Values[means] ],
           "aggregationFunction" -> aggrFunc,
@@ -305,7 +319,7 @@ GNNMonComputeThresholds[ nTopNNs_Integer, opts : OptionsPattern[] ][xs_, context
 GNNMonComputeThresholds[___][xs_, context_Association] :=
     Block[{},
       Echo[
-        "The expected signature is GNNMonComputeThresholds[ nTopNNs_Integer, aggrFunc_Mean, opts:OptionsPattern[] ].",
+        "The expected signature is GNNMonComputeThresholds[ nTopNNs_Integer, opts:OptionsPattern[] ].",
         "GNNMonComputeThresholds:"
       ];
       $GNNMonFailure
@@ -322,9 +336,9 @@ SyntaxInformation[GNNMonFindNearest] = { "ArgumentsPattern" -> { _, _., OptionsP
 
 GNNMonFindNearest[$GNNMonFailure] := $GNNMonFailure;
 
-GNNMonFindNearest[xs_, context_Association] := $GNNMonFailure ;;
+GNNMonFindNearest[xs_, context_Association] := $GNNMonFailure ;
 
-    GNNMonFindNearest[ point_?VectorQ, nTopNNs_Integer, prop_String : "Values" ][xs_, context_Association] :=
+GNNMonFindNearest[ point_?VectorQ, nTopNNs_Integer, prop_String : "Values" ][xs_, context_Association] :=
     Block[{data, nf, nns},
 
       data = Fold[ GNNMonBind, GNNMonUnit[xs, context], { GNNMonGetData, GNNMonTakeValue } ];
@@ -400,7 +414,7 @@ GNNMonClassify[ points_?MatrixQ, prop_String : "Decision", opts : OptionsPattern
     GNNMonClassify[ AssociationThread[ Range[Length[points]] -> points ], prop, opts ][xs, context];
 
 GNNMonClassify[ points_?DataAssociationQ, prop_String : "Decision", opts : OptionsPattern[] ][xs_, context_Association] :=
-    Block[{factor, data, nf, distFunc, nTopNNs, aggrFunc, upperThreshold, res, knownProperties},
+    Block[{factor, data, nfd, distFunc, nTopNNs, aggrFunc, upperThreshold, res, knownProperties},
 
       knownProperties = { "Decision", "Distances", "Probabilities", "Properties"};
 
@@ -413,25 +427,27 @@ GNNMonClassify[ points_?DataAssociationQ, prop_String : "Decision", opts : Optio
       data = Fold[ GNNMonBind, GNNMonUnit[xs, context], { GNNMonGetData, GNNMonTakeValue } ];
       If[ TrueQ[ data === $GNNMonFailure ], Return[$GNNMonFailure] ];
 
-      nf = GNNMonTakeNearestFunction[xs, context];
-      If[ TrueQ[ nf === $GNNMonFailure ], Return[$GNNMonFailure] ];
+      nfd = GNNMonTakeNearestIndexDistanceFunction[xs, context];
+      If[ TrueQ[ nfd === $GNNMonFailure ], Return[$GNNMonFailure] ];
 
       distFunc = GNNMonTakeDistanceFunction[xs, context];
-      If[ TrueQ[ nf === $GNNMonFailure ], Return[$GNNMonFailure] ];
+      If[ TrueQ[ distFunc === $GNNMonFailure ], Return[$GNNMonFailure] ];
 
       nTopNNs = GNNMonTakeNumberOfNNs[xs, context];
-      If[ TrueQ[ nf === $GNNMonFailure ], Return[$GNNMonFailure] ];
+      If[ TrueQ[ nTopNNs === $GNNMonFailure ], Return[$GNNMonFailure] ];
 
       aggrFunc = GNNMonTakeAggregationFunction[xs, context];
-      If[ TrueQ[ nf === $GNNMonFailure ], Return[$GNNMonFailure] ];
+      If[ TrueQ[ aggrFunc === $GNNMonFailure ], Return[$GNNMonFailure] ];
 
       upperThreshold = GNNMonTakeUpperThreshold[xs, context];
-      If[ TrueQ[ nf === $GNNMonFailure ], Return[$GNNMonFailure] ];
+      If[ TrueQ[ upperThreshold === $GNNMonFailure ], Return[$GNNMonFailure] ];
 
-      res = Map[ nf[#, nTopNNs]&, points];
+      res = Map[ nfd[ #, nTopNNs ] &, Values[points] ];
 
       res = Association @
-          KeyValueMap[ Function[{k, v}, k -> aggrFunc[ Map[ distFunc[ points[[k]], data[[#]] ] &, v ] ] ], res];
+          MapIndexed[ Function[{v, ind}, ind[[1]] -> aggrFunc[ v[[All, 2]] ] ], res];
+
+      res = AssociationThread[ Keys[points][[ Keys[res] ]], Values[res] ];
 
       Which[
         MemberQ[ ToLowerCase[{ "Decision" }], ToLowerCase[prop]],
@@ -529,6 +545,71 @@ GNNMonFindAnomalies[___][xs_, context_Association] :=
       ];
       $GNNMonFailure
     ];
+
+
+(**************************************************************)
+(* Find proximity matrix                                      *)
+(**************************************************************)
+
+Clear[QuantileReplacementFunc];
+
+QuantileReplacementFunc[qBoundaries : {_?NumberQ ...}] :=
+    Block[{XXX,
+      t = Partition[Join[{-\[Infinity]}, qBoundaries, {Infinity}], 2, 1]}, Function[
+      Evaluate[ Piecewise[MapThread[{#2, #1[[1]] < XXX <= #1[[2]]} &, {t, Range[1, Length[t]]}]] /. {XXX -> #}]]
+    ];
+
+
+Clear[GNNMonComputeProximityMatrix];
+
+SyntaxInformation[GNNMonComputeProximityMatrix] = { "ArgumentsPattern" -> { _, _., OptionsPattern[] } };
+
+Options[GNNMonComputeProximityMatrix] = { "Rescale" -> True };
+
+GNNMonComputeProximityMatrix[$GNNMonFailure] := $GNNMonFailure;
+
+GNNMonComputeProximityMatrix[xs_, context_Association] := $GNNMonFailure;
+
+GNNMonComputeProximityMatrix[ n_Integer, opts : OptionsPattern[] ][xs_, context_Association] :=
+    Block[{rescaleQ, nnsMat, proxMat, smat, arules, qrFunc},
+
+      rescaleQ = TrueQ[ OptionValue[GNNMonComputeProximityMatrix, "Rescale"] ];
+
+      If[ n < 2,
+        Echo["The first argument is expected to be an integer greater than 1.", "GNNMonComputeProximityMatrix:"];
+        Return[$GNNMonFailure]
+      ];
+
+      nnsMat = GNNMonTakeNearestNeighborDistances[xs, context];
+      If[ TrueQ[ nnsMat === $GNNMonFailure ], Return[$GNNMonFailure] ];
+
+      qrFunc = QuantileReplacementFunc[ Quantile[SparseArray[nnsMat]["NonzeroValues"], Range[0, 1, 1 / (n - 1)]]];
+
+      smat = SparseArray[nnsMat];
+
+      arules = Most[ArrayRules[smat]];
+      arules[[All, 2]] = Map[qrFunc, arules[[All, 2]]];
+
+      If[ rescaleQ,
+        arules[[All, 2]] = N @ Rescale[arules[[All, 2]], MinMax[arules[[All, 2]]], {1, 1 / Max[arules[[All, 2]]]}]
+      ];
+
+      proxMat = SparseArray[Join[arules, Table[{i, i} -> 1, {i, Dimensions[smat][[1]]}]], Dimensions[smat]];
+
+      proxMat = ToSSparseMatrix[ proxMat, "RowNames" -> RowNames[nnsMat], "ColumnNames" -> ColumnNames[nnsMat]];
+
+      GNNMonUnit[ proxMat, context ]
+    ];
+
+GNNMonComputeProximityMatrix[___][xs_, context_Association] :=
+    Block[{},
+      Echo[
+        "The expected signature is GNNMonComputeProximityMatrix[ n_Integer, opts:OptionsPattern[] ].",
+        "GNNMonComputeThresholds:"
+      ];
+      $GNNMonFailure
+    ];
+
 
 End[]; (* `Private` *)
 

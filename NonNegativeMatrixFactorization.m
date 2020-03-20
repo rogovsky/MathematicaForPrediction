@@ -50,11 +50,18 @@
 
 BeginPackage["NonNegativeMatrixFactorization`"];
 
-GDCLS::usage = "GDCLS[V_?MatrixQ,k_Integer,opts] returns the pair of matrices {W,H} such that V = W H and \
-the number of the columns of W and the number of rows of H are k. The method used is called Gradient Descent with Constrained Least Squares.";
+NonNegativeMatrixFactorization::usage = "NonNegativeMatrixFactorization[V_?MatrixQ,k_Integer,opts] \
+returns the pair of matrices {W,H} such that V = W H and \
+the number of the columns of W and the number of rows of H are k. \
+The method used is called Gradient Descent with Constrained Least Squares.";
 
-GDCLSGlobal::usage = "GDCLSGlobal[V_?MatrixQ,W_?MatrixQ,H_?MatrixQ,opts] continues the GDCLS iterations over the matrices W and H \
+GDCLS::usage = "Synonym of NonNegativeMatrixFactorization";
+
+NonNegativeMatrixFactorizationGlobal::usage = "NonNegativeMatrixFactorizationGlobal[V_?MatrixQ,W_?MatrixQ,H_?MatrixQ,opts] \
+continues the NNMF iterations over the matrices W and H \
 in the execution context and returns {W,H} as a result.";
+
+GDCLSGlobal::usage = "Synonym of NonNegativeMatrixFactorizationGlobal";
 
 NormalizeMatrixProduct::usage = "NormalizeMatrixProduct[W_?MatrixQ,H_?MatrixQ] returns a pair of matrices {W1,H1} \
 such that W1 H1 = W H and the norms of the columns of W1 are 1.";
@@ -65,73 +72,210 @@ RightNormalizeMatrixProduct::usage = "RightNormalizeMatrixProduct[W_?MatrixQ,H_?
 such that W1 H1 = W H and the norms of the rows of H1 are 1.";
 
 BasisVectorInterpretation::usage = "BasisVectorInterpretation[vec_?VectorQ,n_Integer,interpretationItems_List] \
-takes the n largest coordinates of vec, finds the corresponding elements in interpretationItems, and returns a list of coordinate-item pairs.";
+takes the n largest coordinates of vec, finds the corresponding elements in interpretationItems, \
+and returns a list of coordinate-item pairs.";
 
 NearestWords::usage = "NearestWords[HNF, word, terms, stemmingRules, n] calculates a statistical thesaurus entry \
 for a specified nearest function over the columns of a matrix of topics and a word.";
 
 Begin["`Private`"];
 
-Clear[GDCLS];
 
-Options[GDCLS] = {"MaxSteps" -> 200, "NonNegative" -> True, "Epsilon" -> 10^-9., "RegularizationParameter" -> 0.01, PrecisionGoal -> Automatic, "PrintProfilingInfo" -> False};
+(***********************************************************)
+(* NonNegativeMatrixFactorization                          *)
+(***********************************************************)
 
-GDCLS[V_?MatrixQ, k_?IntegerQ, opts : OptionsPattern[]] :=
+
+Clear[NonNegativeMatrixFactorization];
+
+SyntaxInformation[NonNegativeMatrixFactorization] = { "ArgumentsPattern" -> { _, _, OptionsPattern[] } };
+
+NonNegativeMatrixFactorization::ndim = "The second argument is expected to be a positive integer";
+
+NonNegativeMatrixFactorization::nmsteps = "The value of the option MaxSteps is expected to be a positive integer";
+
+NonNegativeMatrixFactorization::npreal = "The value of the option `1` is expected to be a positive real number or Automatic";
+
+NonNegativeMatrixFactorization::nnorm = "The value of the option Normalization is expected to be one of \
+Left, Right, True, False, None, or Automatic.";
+
+Options[NonNegativeMatrixFactorization] = {
+  "Epsilon" -> 10^-6.,
+  MaxSteps -> 200,
+  "NonNegative" -> True,
+  "Normalization" -> Left,
+  PrecisionGoal -> Automatic,
+  "ProfilingPrints" -> False,
+  "RegularizationParameter" -> 0.01
+};
+
+NonNegativeMatrixFactorization[V_?MatrixQ, k_?IntegerQ, opts : OptionsPattern[]] :=
     Block[{t, fls, A, W, H, T, m, n, b, diffNorm, normV, nSteps = 0,
-      nonnegQ = OptionValue[GDCLS, "NonNegative"],
-      maxSteps = OptionValue[GDCLS, "MaxSteps"],
-      eps = OptionValue[GDCLS, "Epsilon"],
-      lbd = OptionValue[GDCLS, "RegularizationParameter"],
-      pgoal = OptionValue[GDCLS, PrecisionGoal],
-      PRINT = If[TrueQ[OptionValue[GDCLS, "PrintProfilingInfo"]], Print, None]},
+      nonnegQ, normalization, maxSteps, eps, lbd, pgoal, PRINT},
+
+      eps = OptionValue[NonNegativeMatrixFactorization, "Epsilon"];
+      maxSteps = OptionValue[NonNegativeMatrixFactorization, MaxSteps];
+      nonnegQ = TrueQ[OptionValue[NonNegativeMatrixFactorization, "NonNegative"]];
+      normalization = OptionValue[NonNegativeMatrixFactorization, "Normalization"];
+      pgoal = OptionValue[NonNegativeMatrixFactorization, PrecisionGoal];
+      lbd = OptionValue[NonNegativeMatrixFactorization, "RegularizationParameter"];
+      pgoal = OptionValue[NonNegativeMatrixFactorization, PrecisionGoal];
+      PRINT = If[TrueQ[OptionValue[NonNegativeMatrixFactorization, "ProfilingPrints"]], Print, None];
+
+      If[! (IntegerQ[k] && k > 0),
+        Message[NonNegativeMatrixFactorization::ndim];
+        Return[$Failed];
+      ];
+
+      If[! (IntegerQ[maxSteps] && maxSteps > 0),
+        Message[NonNegativeMatrixFactorization::nmsteps];
+        Return[$Failed];
+      ];
+
+      If[TrueQ[eps === Automatic], eps = 10^-6.];
+
+      If[! (NumericQ[eps] && eps > 0),
+        Message[NonNegativeMatrixFactorization::npreal, "Epsilon"];
+        Return[$Failed];
+      ];
+
+      If[TrueQ[lbd === Automatic], lbd = 0.01];
+
+      If[! (NumericQ[lbd] && lbd > 0),
+        Message[NonNegativeMatrixFactorization::npreal, "RegularizationParameter"];
+        Return[$Failed];
+      ];
+
+      If[TrueQ[pgoal === Automatic], pgoal = 4];
+
+      If[! (NumericQ[pgoal] && pgoal > 0),
+        Message[NonNegativeMatrixFactorization::npreal, "PrecisionGoal"];
+        Return[$Failed];
+      ];
+
       {m, n} = Dimensions[V];
-      W = RandomReal[{0, 1}, {m, k}];
-      H = ConstantArray[0, {k, n}];
-      normV = Norm[V, "Frobenius"]; diffNorm = 10 normV;
-      If[ pgoal === Automatic, pgoal = 4 ];
+      W = SparseArray[RandomReal[{0, 1}, {m, k}]];
+      H = SparseArray[ConstantArray[0, {k, n}]];
+
+      normV = Norm[V, "Frobenius"];
+      diffNorm = 10 * normV;
+
       While[nSteps < maxSteps && TrueQ[! NumberQ[pgoal] || NumberQ[pgoal] && (normV > 0) && diffNorm / normV > 10^(-pgoal)],
+
         nSteps++;
-        t =
-            Timing[
-              A = Transpose[W].W + lbd * IdentityMatrix[k];
-              T = Transpose[W];
-              fls = LinearSolve[A];
-              H = Table[(b = T.V[[All, i]]; fls[b]), {i, 1, n}];
-              H = SparseArray[Transpose[H]];
-              If[nonnegQ,
-                H = Clip[H, {0, Max[H]}]
-              ];
-              W = W * (V.Transpose[H]) / (W.(H.Transpose[H]) + eps);
-            ];
+
+        t = Timing[
+
+          A = Transpose[W].W + lbd * IdentityMatrix[k];
+          T = Transpose[W];
+
+          fls = LinearSolve[A];
+
+          H = Table[(b = T.V[[All, i]]; fls[b]), {i, 1, n}];
+          H = SparseArray[Transpose[H]];
+
+          If[nonnegQ, H = Clip[H, {0, Max[H]}]];
+          W = W * (V.Transpose[H]) / (W.(H.Transpose[H]) + eps);
+
+        ];
+
         If[NumberQ[pgoal],
           diffNorm = Norm[V - W.H, "Frobenius"];
-          If[nSteps < 100 || Mod[nSteps, 100] == 0, PRINT["step:", nSteps, ", iteration time:", t, " relative error:", diffNorm / normV]],
-          If[nSteps < 100 || Mod[nSteps, 100] == 0, PRINT["step:", nSteps, ", iteration time:", t]]
+
+          If[nSteps < 100 || Mod[nSteps, 100] == 0,
+            PRINT["step:", nSteps, ", iteration time:", t, " relative error:", diffNorm / normV]
+          ],
+
+          If[nSteps < 100 || Mod[nSteps, 100] == 0,
+            PRINT["step:", nSteps, ", iteration time:", t]
+          ]
+
         ];
+
       ];
+
+      Which[
+        MemberQ[{True, Left, Automatic, "Left"}, normalization],
+        {W, H} = LeftNormalizeMatrixProduct[W, H],
+
+        MemberQ[{Right, "Right"}, normalization],
+        {W, H} = RightNormalizeMatrixProduct[W, H],
+
+        ! MemberQ[{False, None}, normalization],
+        Message[NonNegativeMatrixFactorization::nnorm];
+      ];
+
       {W, H}
     ];
 
 
-Clear[GDCLSGlobal];
+(***********************************************************)
+(* NonNegativeMatrixFactorizationGlobal                    *)
+(***********************************************************)
 
-Options[GDCLSGlobal] = Options[GDCLS];
+Clear[NonNegativeMatrixFactorizationGlobal];
 
-SetAttributes[GDCLSGlobal, HoldAll];
+SyntaxInformation[NonNegativeMatrixFactorizationGlobal] = { "ArgumentsPattern" -> { _, _, _, OptionsPattern[] } };
 
-GDCLSGlobal[V_, W_, H_, opts : OptionsPattern[]] :=
+NonNegativeMatrixFactorizationGlobal::nmsteps = "The value of the option MaxSteps is expected to be a positive integer";
+
+NonNegativeMatrixFactorizationGlobal::npreal = "The value of the option `1` is expected to be a positive real number or Automatic";
+
+NonNegativeMatrixFactorizationGlobal::nnorm = "The value of the option Normalization is expected to be one of \
+Left, Right, True, False, None, or Automatic.";
+
+Options[NonNegativeMatrixFactorizationGlobal] = Options[NonNegativeMatrixFactorization];
+
+SetAttributes[NonNegativeMatrixFactorizationGlobal, HoldAll];
+
+NonNegativeMatrixFactorizationGlobal[V_, W_, H_, opts : OptionsPattern[]] :=
     Block[{t, fls, A, k, T, m, n, b, diffNorm, normV, nSteps = 0,
-      nonnegQ = OptionValue[GDCLSGlobal, "NonNegative"],
-      maxSteps = OptionValue[GDCLSGlobal, "MaxSteps"],
-      eps = OptionValue[GDCLSGlobal, "Epsilon"],
-      lbd = OptionValue[GDCLSGlobal, "RegularizationParameter"],
-      pgoal = OptionValue[GDCLSGlobal, PrecisionGoal],
-      PRINT = If[TrueQ[OptionValue[GDCLSGlobal, "PrintProfilingInfo"]], Print, None]},
+      nonnegQ, normalization, maxSteps, eps, lbd, pgoal, PRINT},
+
+      eps = OptionValue[NonNegativeMatrixFactorizationGlobal, "Epsilon"];
+      maxSteps = OptionValue[NonNegativeMatrixFactorizationGlobal, MaxSteps];
+      nonnegQ = TrueQ[OptionValue[NonNegativeMatrixFactorizationGlobal, "NonNegative"]];
+      normalization = OptionValue[NonNegativeMatrixFactorizationGlobal, "Normalization"];
+      pgoal = OptionValue[NonNegativeMatrixFactorizationGlobal, PrecisionGoal];
+      lbd = OptionValue[NonNegativeMatrixFactorizationGlobal, "RegularizationParameter"];
+      pgoal = OptionValue[NonNegativeMatrixFactorizationGlobal, PrecisionGoal];
+      PRINT = If[TrueQ[OptionValue[NonNegativeMatrixFactorizationGlobal, "ProfilingPrints"]], Print, None];
+
+      If[! (IntegerQ[maxSteps] && maxSteps > 0),
+        Message[NonNegativeMatrixFactorizationGlobal::nmsteps];
+        Return[$Failed];
+      ];
+
+      If[TrueQ[eps === Automatic], eps = 10^-6.];
+
+      If[! (NumericQ[eps] && eps > 0),
+        Message[NonNegativeMatrixFactorizationGlobal::npreal, "Epsilon"];
+        Return[$Failed];
+      ];
+
+      If[TrueQ[lbd === Automatic], lbd = 0.01];
+
+      If[! (NumericQ[lbd] && lbd > 0),
+        Message[NonNegativeMatrixFactorizationGlobal::npreal, "RegularizationParameter"];
+        Return[$Failed];
+      ];
+
+      If[TrueQ[pgoal === Automatic], pgoal = 4];
+
+      If[! (NumericQ[pgoal] && pgoal > 0),
+        Message[NonNegativeMatrixFactorizationGlobal::npreal, "PrecisionGoal"];
+        Return[$Failed];
+      ];
+
+
       {m, n} = Dimensions[V];
       k = Dimensions[H][[1]];
       normV = Norm[V, "Frobenius"]; diffNorm = 10 normV;
+
       While[nSteps < maxSteps && TrueQ[! NumberQ[pgoal] || NumberQ[pgoal] && (normV > 0) && diffNorm / normV > 10^(-pgoal)],
+
         nSteps++;
+
         t =
             Timing[
               A = Transpose[W].W + lbd * IdentityMatrix[k];
@@ -144,17 +288,33 @@ GDCLSGlobal[V_, W_, H_, opts : OptionsPattern[]] :=
               ];
               W = W * (V.Transpose[H]) / (W.(H.Transpose[H]) + eps);
             ];
+
         If[NumberQ[pgoal],
           diffNorm = Norm[V - W.H, "Frobenius"];
           If[nSteps < 100 || Mod[nSteps, 100] == 0, PRINT[nSteps, " ", t, " relative error=", diffNorm / normV]],
           If[nSteps < 100 || Mod[nSteps, 100] == 0, PRINT[nSteps, " ", t]]
         ];
+
       ];
+
       {W, H}
     ] /; MatrixQ[W] && MatrixQ[H] && Dimensions[W][[2]] == Dimensions[H][[1]];
 
-(* ::Subsection:: *)
-(*Normalize matrices*)
+
+(***********************************************************)
+(* Synonyms                                                *)
+(***********************************************************)
+
+Clear[GDCLS];
+GDCLS = NonNegativeMatrixFactorization;
+
+Clear[GDCLSGlobal];
+GDCLSGlobal = NonNegativeMatrixFactorizationGlobal;
+
+
+(***********************************************************)
+(* Normalize matrices                                      *)
+(***********************************************************)
 
 Clear[NormalizeMatrixProduct];
 NormalizeMatrixProduct[W_?MatrixQ, H_?MatrixQ] :=
@@ -184,6 +344,10 @@ BasisVectorInterpretation[vec_, n_Integer, terms_] :=
       Transpose[{vec[[t]], terms[[t]]}]
     ];
 
+
+(***********************************************************)
+(* Nearest words                                           *)
+(***********************************************************)
 
 Clear[NearestWords];
 NearestWords[HNF_NearestFunction, word_String, terms : {_String ..},

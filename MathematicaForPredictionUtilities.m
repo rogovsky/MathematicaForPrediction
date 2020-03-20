@@ -41,6 +41,11 @@ If[Length[DownValues[CrossTabulate`CrossTabulate]] == 0,
   Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/CrossTabulate.m"]
 ];
 
+If[Length[DownValues[ParetoPrincipleAdherence`ParetoPrinciplePlot]] == 0,
+  Echo["ParetoPrincipleAdherence.m", "Importing from GitHub:"];
+  Import["https://raw.githubusercontent.com/antononcube/MathematicaForPrediction/master/ParetoPrincipleAdherence.m"]
+];
+
 
 BeginPackage["MathematicaForPredictionUtilities`"];
 
@@ -60,14 +65,12 @@ full two dimensional arrays. (I.e. lists of records.)";
 GridTableForm::usage = "GridTableForm[listOfList, TableHeadings->headings] mimics TableForm by using Grid \
 (and producing fancier outlook).";
 
-ParetoLawPlot::usage = "ParetoLawPlot[data,opts] makes a list plot for the manifestation of the Pareto law. \
-It has the same signature and options as ListPlot. \
-The argument data is expected to be a numerical a vector or a list of numerical vectors.";
+ParetoLawPlot::usage = "Synonym of ParetoPrinciplePlot.";
 
 IntervalMappingFunction::usage = "IntervalMappingFunction[boundaries] makes a piece-wise function for mapping of \
 a real value to the enumerated intervals Partition[Join[{-Infinity}, boundaries, {Infinity}], 2, 1].";
 
-ToCategoricalColumns::usage = "ToCategoricalColumns[data_?ArrayQ, qs_: Range[0, 1, 0.2]] \
+ToCategoricalColumns::usage = "ToCategoricalColumns[data_?ArrayQ, breaks_: Range[0, 1, 0.1]] \
 converts the numerical columns of an array to categorical. (Using IntervalMappingFunction.)";
 
 VariableDependenceGrid::usage = "VariableDependenceGrid[data_?MatrixQ,columnNames,opts] makes a grid with \
@@ -99,6 +102,7 @@ Begin["`Private`"];
 
 Needs["MosaicPlot`"];
 Needs["CrossTabulate`"];
+Needs["ParetoPrincipleAdherence`"];
 
 
 (*===========================================================*)
@@ -325,31 +329,122 @@ RecordsSummary[___] := (Message[RecordsSummary::args];$Failed);
 (*===========================================================*)
 
 Clear[GridTableForm];
-Options[GridTableForm] = Join[ {TableHeadings -> None}, Options[Grid] ];
-GridTableForm[data_, opts : OptionsPattern[]] :=
-    Block[{gridData, gridHeadings, dataVecQ = False},
-      gridHeadings = OptionValue[GridTableForm, TableHeadings];
+
+GridTableForm::nargs = "The first argument is expected to be a list or an association.";
+GridTableForm::nthr = "The value of the option \"TableHeadings\" is expected to be a list, Automatic, or None.";
+
+SyntaxInformation[GridTableForm] = {"ArgumentsPattern" -> {_, OptionsPattern[]}};
+
+Options[GridTableForm] =
+    Join[{
+      "TableHeadings" -> Automatic,
+      "TableHeadingsStyle" -> {Blue, FontFamily -> "Times"},
+      "RowBackground" -> {White, GrayLevel[0.96]}},
+      Options[Grid]
+    ];
+
+GridTableForm[data_Association, opts : OptionsPattern[]] :=
+    GridTableForm[Values[data], opts, "TableHeadings" -> Keys[data]];
+
+GridTableForm[data_List, opts : OptionsPattern[]] :=
+    Block[{headingsStyle, contrastingColorsPair, rowNames, gridHeadings,
+      gridData, dataVecQ = False},
+
+      headingsStyle = OptionValue[GridTableForm, "TableHeadingsStyle"];
+      contrastingColorsPair = OptionValue[GridTableForm, "RowBackground"];
+      gridHeadings = OptionValue[GridTableForm, "TableHeadings"];
+
+      If[AtomQ[contrastingColorsPair] || TrueQ[Head[contrastingColorsPair] === RGBColor],
+        contrastingColorsPair = {contrastingColorsPair, contrastingColorsPair}
+      ];
+
       gridData = data;
-      If[VectorQ[data], dataVecQ = True; gridData = List@data ];
+
+      If[VectorQ[data],
+        dataVecQ = True;
+        gridData = List@data
+      ];
+
+      (* Headings *)
+      Which[
+        TrueQ[gridHeadings === None],
+        {rowNames, gridHeadings} = {Automatic, Automatic},
+
+
+        TrueQ[gridHeadings === Automatic],
+        {rowNames, gridHeadings} = {Automatic, Automatic},
+
+        MatchQ[gridHeadings, {_List| Automatic | None}],
+        {rowNames, gridHeadings} = {gridHeadings[[1]], Automatic},
+
+        MatchQ[gridHeadings, {_List | None | Automatic, _List | None | Automatic}],
+        rowNames = gridHeadings[[1]];
+        gridHeadings = gridHeadings[[2]],
+
+        ListQ[gridHeadings],
+        rowNames = Automatic,
+
+        True,
+        {rowNames, gridHeadings} = {Automatic, Automatic}
+      ];
+
+      If[TrueQ[rowNames === Automatic] || TrueQ[rowNames === None],
+        rowNames = Range[Length[gridData]]
+      ];
+
+      Which[
+        Length[rowNames] < Length[gridData],
+        rowNames = Join[rowNames, Table[SpanFromAbove, Length[gridData] - Length[rowNames]]],
+
+        Length[rowNames] > Length[gridData],
+        rowNames = Take[rowNames, Length[gridData]]
+      ];
+
       gridData = Map[Join[#, Table["", {Max[Length /@ gridData] - Length[#]}]] &, gridData];
-      gridData = MapIndexed[Prepend[#1, #2[[1]]] &, gridData];
-      If[gridHeadings === None || ! ListQ[gridHeadings],
+      gridData = MapThread[Prepend, {gridData, rowNames}];
+
+      Which[
+        TrueQ[gridHeadings === None] || TrueQ[gridHeadings === Automatic],
         gridHeadings = Join[{"#"}, Range[1, Length[gridData[[1]]] - 1]],
-        (*ELSE*)
-        gridHeadings = Join[{"#"}, gridHeadings];
+
+        ListQ[gridHeadings],
+        gridHeadings = Join[{"#"}, gridHeadings],
+
+        True,
+        Message[GridTableForm::nthr];
+        gridHeadings = Join[{"#"}, Range[1, Length[gridData[[1]]] - 1]]
       ];
-      gridHeadings = Map[Style[#, Blue, FontFamily -> "Times"] &, gridHeadings];
-      If[Length[gridHeadings] < Length[gridData[[1]]],
-        gridHeadings = Append[gridHeadings, SpanFromLeft];
+
+      gridHeadings = Map[Style[#, Sequence @@ Flatten[{headingsStyle}]] &, gridHeadings];
+
+      Which[
+        Length[gridHeadings] < Length[gridData[[1]]],
+        gridHeadings = Append[gridHeadings, SpanFromLeft],
+
+        Length[gridHeadings] > Length[gridData[[1]]],
+        gridHeadings = Take[gridHeadings, Length[gridData[[1]]]]
       ];
+
+      (* Final grid data *)
       gridData = Prepend[gridData, gridHeadings];
-      (*If[dataVecQ, gridData = Transpose[gridData] ];*)
+
       Grid[gridData,
-        DeleteCases[ {opts}, (TableHeadings -> _)],
+        FilterRules[{opts}, Options[Grid]],
         Alignment -> Left,
         Dividers -> {Join[{1 -> Black, 2 -> Black},
-          Thread[Range[3, Length[gridData[[2]]] + 1] -> GrayLevel[0.8]], {Length[gridData[[2]]] + 1 -> Black}], {True, True, {False}, True}},
-        Background -> {Automatic, Flatten[Table[{White, GrayLevel[0.96]}, {Length[gridData] / 2}]]}]
+          Thread[Range[3, Length[gridData[[2]]] + 1] ->
+              GrayLevel[0.8]], {Length[gridData[[2]]] + 1 -> Black}], {True,
+          True, {False}, True}},
+        Background -> {Automatic,
+          If[EvenQ[Length[gridData]], #, Append[#, contrastingColorsPair[[1]]]] &@
+              Flatten[Table[contrastingColorsPair, {Length[gridData] / 2}]]}
+      ]
+    ];
+
+GridTableForm[___] :=
+    Block[{},
+      Message[GridTableForm::nargs];
+      $Failed
     ];
 
 
@@ -358,18 +453,7 @@ GridTableForm[data_, opts : OptionsPattern[]] :=
 (*===========================================================*)
 
 Clear[ParetoLawPlot];
-Options[ParetoLawPlot] = Options[ListPlot];
-ParetoLawPlot[dataVec : {_?NumberQ ..}, opts : OptionsPattern[]] := ParetoLawPlot[{Tooltip[dataVec, 1]}, opts];
-ParetoLawPlot[dataVecs : {{_?NumberQ ..} ..}, opts : OptionsPattern[]] :=
-    ParetoLawPlot[MapThread[Tooltip, {dataVecs, Range[Length[dataVecs]]}], opts];
-ParetoLawPlot[dataVecs : {Tooltip[{_?NumberQ ..}, _] ..}, opts : OptionsPattern[]] :=
-    Block[{t, mc = 0.5},
-      t = Map[ Tooltip[(Accumulate[#] / Total[#] &)[SortBy[#[[1]], -# &]], #[[2]]] &, dataVecs];
-      ListPlot[t, opts, PlotRange -> All,
-        GridLines -> {Length[t[[1, 1]]] Range[0.1, mc, 0.1], {0.8}},
-        Frame -> True,
-        FrameTicks -> {{Automatic, Automatic}, {Automatic, Table[{Length[t[[1, 1]]] c, ToString[Round[100 c]] <> "%"}, {c, Range[0.1, mc, 0.1]}]}}]
-    ];
+ParetoLawPlot = ParetoPrincipleAdherence`ParetoPrinciplePlot;
 
 
 (*===========================================================*)
@@ -537,7 +621,9 @@ VariableDependenceGrid[data_?MatrixQ, columnNamesArg_, opts : OptionsPattern[]] 
 (***********************************************************)
 
 ClearAll[GridOfCodeAndComments];
+
 Options[GridOfCodeAndComments] = {"GridFunction" -> (Grid[#, Alignment -> Left] &)};
+
 GridOfCodeAndComments[code_String, opts : OptionsPattern[]] :=
     Block[{grData, codeLines, comPat, gridFunc},
       gridFunc = OptionValue["GridFunction"];
@@ -572,24 +658,50 @@ GridOfCodeAndComments[code_String, opts : OptionsPattern[]] :=
 (***********************************************************)
 
 Clear[ImportCSVToDataset];
-Options[ImportCSVToDataset] = {"RowNames" -> False, "ColumnNames" -> True};
+
+lsImportOptions = {
+  "EmptyFields" -> "", "TextDelimiters" -> "\"", CharacterEncoding -> "UTF8ISOLatin1",
+  "CurrencyTokens" -> {{"$", "£", "¥", "\[Euro]"}, {"c", "¢", "p", "F"}},
+  "DateStringFormat" -> None, "FillRows" -> Automatic,
+  "HeaderLines" -> 0, "IgnoreEmptyLines" -> False,
+  "NumberPoint" -> ".", "Numeric" -> Automatic, "SkipLines" -> 0};
+
+Options[ImportCSVToDataset] = Join[ {"RowNames" -> False, "ColumnNames" -> True}, lsImportOptions ];
+
 ImportCSVToDataset[fname_String, opts : OptionsPattern[]] :=
+    ImportCSVToDataset[fname, Automatic, opts];
+
+ImportCSVToDataset[fname_String, format : (_String | Automatic), opts : OptionsPattern[]] :=
     Block[{data},
-      data = Import[fname];
+
+      If[ TrueQ[format === Automatic],
+        data = Import[fname, Automatic, FilterRules[{opts}, lsImportOptions] ],
+        (* ELSE *)
+        data = Import[fname, format, FilterRules[{opts}, lsImportOptions] ]
+      ];
+
       If[OptionValue["ColumnNames"],
         data = Dataset[Dataset[Rest[data]][All, AssociationThread[First[data], #] &]],
         (*ELSE*)
         data = Dataset[data]
       ];
+
       If[OptionValue["RowNames"],
         data = Dataset[AssociationThread[Normal[data[All, First]], Normal[data[All, Rest]]]]
       ];
+
       data
     ];
 
+(***********************************************************)
+(* DatasetColumnNumericQ                                   *)
+(***********************************************************)
+
 (* The pattern handling is not general enough: it is only for strings. *)
 Clear[DatasetColumnNumericQ];
+
 Options[DatasetColumnNumericQ] = { "NotAvailablePattern" -> ( "" | "NA" | "Null" | "None"), IgnoreCase -> True};
+
 DatasetColumnNumericQ[data_Dataset, opts : OptionsPattern[]] :=
     Block[{naPattern = OptionValue["NotAvailablePattern"], ignoreCase = OptionValue[IgnoreCase]},
       Transpose[data][All, VectorQ[DeleteCases[DeleteMissing[#], (x_String /; StringMatchQ[x, naPattern, IgnoreCase -> ignoreCase])], NumericQ] &]

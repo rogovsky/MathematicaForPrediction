@@ -69,96 +69,123 @@
 
 *)
 
-BeginPackage["TriesWithFrequencies`"]
+BeginPackage["TriesWithFrequencies`"];
 
-$TrieRoot::usage = "Symbol marking the root of a trie."
+$TrieRoot::usage = "Symbol marking the root of a trie.";
 
-$TrieValue::usage = "Symbol used as a key for a trie node value."
+$TrieValue::usage = "Symbol used as a key for a trie node value.";
 
-TrieQ::usage = "A predicate is an expression a trie."
+TrieQ::usage = "A predicate is an expression a trie.";
 
-TrieBodyQ::usage = "A predicate is an expression a trie body."
+TrieBodyQ::usage = "A predicate is an expression a trie body.";
 
-TrieRuleQ::usage = "A predicate is an expression a trie rule."
+TrieRuleQ::usage = "A predicate is an expression a trie rule.";
 
-TrieRetrieve::usage = "TrieRetrieve[t_, w_List] gives the node corresponding to the last \"character\" of the \"word\" w in the trie t."
+TrieRetrieve::usage = "TrieRetrieve[t_, w_List] gives the node corresponding to the last \"character\" of the \"word\" w in the trie t.";
 
-TrieSubTrie::usage = "TrieSubTrie[t_, w_List] gives the sub-trie corresponding to the last \"character\" of the \"word\" w in the trie t."
+TrieSubTrie::usage = "TrieSubTrie[t_, w_List] gives the sub-trie corresponding to the last \"character\" of the \"word\" w in the trie t.";
 
-TriePosition::usage = "TriePosition[ tr_, ks_List ] finds a sub-list of the list of keys\
- ks that corresponds to a sub-trie in the trie tr."
+TriePosition::usage = "TriePosition[ tr_, ks_List ] finds a sub-list of the list of keys \
+ks that corresponds to a sub-trie in the trie tr.";
 
-TrieCreate::usage = "TrieCreate[words:{_List..}] creates a trie from a list of lists."
+TrieCreate::usage = "TrieCreate[words:{_List..}] creates a trie from a list of lists.";
 
-TrieCreateBySplit::usage = "TrieCreateBySplit[ ws:{_String..}, patt:\"\"] creates a trie object\
- from a list of strings that are split with a given pattern patt."
+TrieCreateBySplit::usage = "TrieCreateBySplit[ ws:{_String..}, patt:\"\"] creates a trie object \
+from a list of strings that are split with a given pattern patt.";
 
-TrieInsert::usage = "TrieInsert[t_, w_List] insert a \"word\" to the trie t. TrieInsert[t_, w_List, val_] inserts a key and a corresponding value."
+TrieInsert::usage = "TrieInsert[t_, w_List] insert a \"word\" to the trie t. \
+TrieInsert[t_, w_List, val_] inserts a key and a corresponding value.";
 
-TrieMerge::usage = "TrieMerge[t1_, t2_] merges two tries."
+TrieMerge::usage = "TrieMerge[t1_, t2_] merges two tries.";
 
 TrieShrink::usage = "TrieShrink[tr_?TrieQ] shrinks the leaves and internal nodes of the trie tr into prefixes. \
-TrieShrink[tr_?TrieQ, sep_String] does the shrinking of string nodes with the string separator sep."
+TrieShrink[tr_?TrieQ, sep_String] does the shrinking of string nodes with the string separator sep.";
 
-TrieToRules::usage = "Converts a trie into a list of rules suitable for visualization with GraphPlot and LayeredGraphPlot.\
- To each trie node is added a list of its level and its traversal order."
+TrieToRules::usage = "Converts a trie into a list of rules suitable for visualization with GraphPlot and LayeredGraphPlot. \
+To each trie node is added a list of its level and its traversal order.";
 
-TrieForm::usage = "Graph plot for a trie."
+TrieForm::usage = "Graph plot for a trie.";
 
-TrieValueTotal::usage = "TrieValueTotal[trb_?TrieBodyQ] gives the total sum of the values in a trie body."
+TrieValueTotal::usage = "TrieValueTotal[trb_?TrieBodyQ] gives the total sum of the values in a trie body.";
 
-TrieNodeProbabilities::usage = "Converts the frequencies at the nodes of a trie into probabilities.\
- The value of the option \"ProbabilityModifier\" is a function that is applied to the computed probabilities."
+TrieNodeProbabilities::usage = "Converts the frequencies at the nodes of a trie into probabilities. \
+The value of the option \"ProbabilityModifier\" is a function that is applied to the computed probabilities.";
 
-TrieNodeFrequencies::usage = "Converts the probabilities at the nodes of a trie into frequencies.\
- The value of the option \"FrequencyModifier\" is a function that is applied to the computed frequencies."
+TrieNodeFrequencies::usage = "Converts the probabilities at the nodes of a trie into frequencies. \
+The value of the option \"FrequencyModifier\" is a function that is applied to the computed frequencies.";
 
-TrieLeafProbabilities::usage = "Gives the probabilities to end up at each of the leaves by paths from the root of the trie."
+TrieLeafProbabilities::usage = "Gives the probabilities to end up at each of the leaves by paths from the root of the trie.";
 
-TrieLeafProbabilitiesWithPositions::usage = "Gives the probabilities to end up at each of the leaves by paths from the root of the trie.\
-For each leaf its position in the trie is given."
+TrieLeafProbabilitiesWithPositions::usage = "Gives the probabilities to end up at each of the leaves by paths from the root of the trie. \
+For each leaf its position in the trie is given.";
 
-TriePathFromPosition::usage = "TriePathFromPosition[trie,pos] gives a list of nodes from the root of a trie to the node at a specified position."
+TriePathFromPosition::usage = "TriePathFromPosition[trie,pos] gives a list of nodes from the root of a trie to the node at a specified position.";
 
-TrieRootToLeafPaths::usage = "TrieRootToLeafPaths[trie] gives all paths from the root node to the leaf nodes."
+TrieRootToLeafPaths::usage = "TrieRootToLeafPaths[trie] gives all paths from the root node to the leaf nodes.";
 
-TrieRootToLeafPathRules::usage = "TrieRootToLeafPathRules[trie] gives rules for all paths from the root node to the leaf node values."
+TrieRootToLeafPathRules::usage = "TrieRootToLeafPathRules[trie] gives rules for all paths from the root node to the leaf node values.";
 
-TrieGetWords::usage = "TrieGetWords[ tr_, sw_List ] gives a list words in tr that start with sw."
+TrieRootToLeafPathProbabilityRules::usage = "TrieRootToLeafPathProbabilityRules[trie] gives path probability rules \
+for all paths from the root node to the leaf nodes.";
 
-TrieRemove::usage = "TrieRemove removes a \"word\" from a trie."
+TrieGetWords::usage = "TrieGetWords[ tr_, sw_List ] gives a list words in tr that start with sw.";
 
-TrieHasCompleteMatchQ::usage = "TrieHasCompleteMatchQ[ tr_, sw_List ] finds does a fraction\
- of the list sw is a complete match in the trie tr."
+TrieRemove::usage = "TrieRemove removes a \"word\" from a trie.";
 
-TrieContains::usage = "TrieContains[ tr_, sw_List ] finds is the list sw a complete match in the trie tr."
+TrieThresholdRemove::usage = "TrieThresholdRemove[tr_, th_?NumberQ, opts] removes nodes that have values below \
+a specified threshold. \
+If the value postfixVal of the option \"Postfix\" is different than NULL or None then \
+the dropped nodes are replaced with postfixVal -> removedTotal, \
+where removedTotal is the total of the values of the dropped nodes. \
+If the option \"BelowThreshold\" is to False, the nodes with values above the threshold are removed";
 
-TrieMemberQ::usage = "Same as TrieContains."
+TrieParetoFractionRemove::usage = "TrieParetoFractionRemove[tr_, fr_?NumberQ, opts] removes nodes that have values
+below the thresholds derived by the specified Pareto principle fraction. \
+If the value postfixVal of the option \"Postfix\" is different than NULL or None then \
+the dropped nodes are replaced with postfixVal -> removedTotal, \
+where removedTotal is the total of the values of the dropped nodes. \
+If the option \"RemoveBottomElements\" is to False, \
+the nodes with Pareto values below the derived thresholds are removed.";
 
-TrieKeyExistsQ::usage = "TrieKeyExistsQ[tr_, sw_List] finds is the list sw a key in the trie tr."
+TrieHasCompleteMatchQ::usage = "TrieHasCompleteMatchQ[ tr_, sw_List ] finds does a fraction \
+of the list sw is a complete match in the trie tr.";
 
-TriePrune::usage = "TriePrune[t, maxLvl] prunes the trie to a maximum node level. (The root is level 0.)"
+TrieContains::usage = "TrieContains[ tr_, sw_List ] finds is the list sw a complete match in the trie tr.";
 
-TrieNodeCounts::usage = "TrieNodeCounts[t] gives and association with the total number of nodes, internal nodes only, and leaves only."
+TrieMemberQ::usage = "Same as TrieContains.";
 
-TrieDepth::usage = "TrieDepth[tr] gives the maximum level of the trie tr."
+TrieKeyExistsQ::usage = "TrieKeyExistsQ[tr_, sw_List] finds is the list sw a key in the trie tr.";
 
-TrieToJSON::usage = "TrieToJSON[tr] converts a trie to a corresponding JSON expression."
+TrieKeyQ::usage = "Synonym of TrieKeyExistsQ.";
 
-TrieToListTrie::usage = "TrieToListTrie[tr] converts an Association based trie to a List based trie. (The \"old\" approach.)"
+TriePrune::usage = "TriePrune[t, maxLvl] prunes the trie to a maximum node level. (The root is level 0.)";
+
+TrieMap::usage = "TrieMap[t, preFunc, postFunc] traverses the trie t and applies preFunc and postFunc at each node.";
+
+TrieNodeCounts::usage = "TrieNodeCounts[t] gives and association with the total number of nodes, internal nodes only, and leaves only.";
+
+TrieDepth::usage = "TrieDepth[tr] gives the maximum level of the trie tr.";
+
+TrieToJSON::usage = "TrieToJSON[tr] converts a trie to a corresponding JSON expression.";
+
+TrieToListTrie::usage = "TrieToListTrie[tr] converts an Association based trie to a List based trie. (The \"old\" approach.)";
 
 ToTrieFromJSON::usage = "ToTrieFromJSON[jsonTrie:{_Rule...}] converts a JSON import into a Trie object. \
 ToTrieFromJSON[jsonTrie:{_Rule...}, elementNames:{key_String, value_String, children_String}] is going to use \
-the specified element names for the conversion."
+the specified element names for the conversion.";
 
-TrieComparisonGrid::usage = "Makes a grid trie plots for a specified list of trie expressions."
+TrieComparisonGrid::usage = "Makes a grid trie plots for a specified list of trie expressions.";
 
 TrieClassify::usage = "TrieClassify[tr_,record_] classifies a record using a trie. \
 The signature TrieClassify[tr_,record_,prop_] can take properties as the ones given to ClassifierFunction. \
-TrieClassify[tr_,record_] is the same as TrieClassify[tr_,record_,\"Decision\"]."
+TrieClassify[tr_,record_] is the same as TrieClassify[tr_,record_,\"Decision\"].";
 
 
 Begin["`Private`"];
+
+(************************************************************)
+(* Trie core functions                                      *)
+(************************************************************)
 
 Clear[TrieBodyQ];
 TrieBodyQ[a_Association] := KeyExistsQ[a, $TrieValue];
@@ -233,6 +260,10 @@ TrieInsert[tr_, word_List, value_] :=
     ];
 
 
+(************************************************************)
+(* Trie creation functions                                  *)
+(************************************************************)
+
 Clear[TrieCreate1];
 TrieCreate1[{}] := <|$TrieRoot -> <|$TrieValue -> 0|>|>;
 TrieCreate1[words : {_List ..}] :=
@@ -244,25 +275,30 @@ Clear[TrieCreate];
 TrieCreate[{}] := <|$TrieRoot -> <|$TrieValue -> 0|>|>;
 TrieCreate[words : {_List ..}] :=
     Block[{},
-      If[Length[words] <= 5, TrieCreate1[words],(*ELSE*)
-        TrieMerge[TrieCreate[Take[words, Floor[Length[words]/2]]],
-          TrieCreate[Take[words, {Floor[Length[words]/2] + 1, Length[words]}]]]
+      If[Length[words] <= 5, TrieCreate1[words], (*ELSE*)
+        TrieMerge[TrieCreate[Take[words, Floor[Length[words] / 2]]],
+          TrieCreate[Take[words, {Floor[Length[words] / 2] + 1, Length[words]}]]]
       ]
     ];
 
 Clear[TrieCreateBySplit];
-TrieCreateBySplit[words : {_String ..}, patt_: ""] :=
-    TrieCreate[ Map[StringSplit[#,""]&, words]]
+TrieCreateBySplit[words : {_String ..}, patt_ : ""] :=
+    TrieCreate[ Map[StringSplit[#, ""]&, words]]
+
+
+(************************************************************)
+(* Trie retrieval functions                                 *)
+(************************************************************)
 
 Clear[TrieSubTrie, TrieSubTriePathRec];
 
 TrieSubTrie::wargs = "The first argument is expected to be a trie; the second argument is expected to be a list.";
 
 TrieSubTrie[tr_?TrieQ, wordArg_List ] :=
-    Block[{path, word=wordArg},
-      If[TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot,___}], word = Prepend[word, $TrieRoot] ];
+    Block[{path, word = wordArg},
+      If[TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot, ___}], word = Prepend[word, $TrieRoot] ];
       path = TrieSubTriePathRec[tr, word ];
-      If[Length[path]==0,{},
+      If[Length[path] == 0, {},
         <|Last[path] -> tr[ Sequence @@ path ]|>
       ]
     ];
@@ -283,18 +319,18 @@ TrieSubTriePathRec[tr_, word_List] :=
 
 Clear[TriePosition];
 TriePosition[tr_?TrieQ, word_List] :=
-    If[TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot,___}],
+    If[TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot, ___}],
       TrieSubTriePathRec[tr, Prepend[word, $TrieRoot] ],
       TrieSubTriePathRec[tr, word ]
     ];
 
 Clear[TrieRetrieve];
 TrieRetrieve[tr_?TrieQ, wordArg_List] :=
-    Block[{p, word=wordArg},
-      If[TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot,___}], word = Prepend[word, $TrieRoot] ];
+    Block[{p, word = wordArg},
+      If[TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot, ___}], word = Prepend[word, $TrieRoot] ];
       p = tr[ Sequence @@ word ];
-      If[ FreeQ[p,_Missing], p,
-      (*ELSE*)
+      If[ FreeQ[p, _Missing], p,
+        (*ELSE*)
         p = TriePosition[tr, wordArg];
         Which[
           Length[p] == 0, {},
@@ -303,6 +339,10 @@ TrieRetrieve[tr_?TrieQ, wordArg_List] :=
       ]
     ];
 
+
+(************************************************************)
+(* Trie key query functions                                 *)
+(************************************************************)
 
 Clear[TrieHasCompleteMatchQ];
 TrieHasCompleteMatchQ[tr_?TrieQ, word_List ] :=
@@ -324,13 +364,13 @@ Clear[TrieContains];
 TrieContains[tr_?TrieQ, wordArg_List ] :=
     Block[{pos, word = wordArg},
 
-      If[ TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot,___}], word = Prepend[word, $TrieRoot] ];
+      If[ TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot, ___}], word = Prepend[word, $TrieRoot] ];
 
       pos = TriePosition[tr, word];
 
       If[ Length[pos] == Length[word],
         TrieValueTotal[ tr[ Sequence @@ pos ] ] < tr[ Sequence @@ pos, $TrieValue ],
-      (* ELSE *)
+        (* ELSE *)
         False
       ]
     ];
@@ -340,11 +380,18 @@ TrieMemberQ = TrieContains;
 Clear[TrieKeyExistsQ];
 TrieKeyExistsQ[ tr_?TrieQ, wordArg_List ] :=
     Block[{pos, word = wordArg},
-      If[ TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot,___}], word = Prepend[word, $TrieRoot] ];
+      If[ TrieWithTrieRootQ[tr] && !MatchQ[word, {$TrieRoot, ___}], word = Prepend[word, $TrieRoot] ];
       pos = TriePosition[tr, word];
       Length[pos] == Length[word]
     ];
 
+Clear[TrieKeyQ];
+TrieKeyQ = TrieKeyExistsQ;
+
+
+(************************************************************)
+(* TrieNodeProbabilities and related functions              *)
+(************************************************************)
 
 Clear[TrieNodeProbabilities, TrieNodeProbabilitiesRec];
 
@@ -367,7 +414,7 @@ TrieNodeProbabilitiesRec[trb_?TrieBodyQ, opts : OptionsPattern[]] :=
           sum = trb[$TrieValue]
         ];
         res = Map[TrieNodeProbabilitiesRec[#] &, KeyDrop[trb, $TrieValue]];
-        res = Replace[res, <|a___, $TrieValue -> x_, b___|> :> <|a, $TrieValue -> pm[x/sum], b|>, {1}];
+        res = Replace[res, <|a___, $TrieValue -> x_, b___|> :> <|a, $TrieValue -> pm[x / sum], b|>, {1}];
         Join[res, KeyTake[trb, $TrieValue]]
       ]
     ];
@@ -391,7 +438,7 @@ TrieLeafProbabilities[trieArg_?TrieQ] :=
             TrieLeafProbabilitiesRec[First@Keys@trieArg, First@Values@trieArg]
           ];
 
-      If[Length[res]==1, res, Merge[res, Total]]
+      If[Length[res] == 1, res, Merge[res, Total]]
     ];
 
 TrieLeafProbabilities[args__] :=
@@ -414,11 +461,15 @@ TrieLeafProbabilitiesRec[k_, trb_?TrieBodyQ] :=
         If[sum < 1,
           res = Append[res, k -> (1 - sum)]
         ];
-        res = Map[#[[1]] -> #[[2]]*trb[$TrieValue] &, Flatten[res, 1]]
+        res = Map[#[[1]] -> #[[2]] * trb[$TrieValue] &, Flatten[res, 1]]
 
       ]
     ];
 
+
+(************************************************************)
+(* TrieShrink and related functions                         *)
+(************************************************************)
 
 Clear[NodeJoin];
 NodeJoin[n_String] := n;
@@ -466,6 +517,11 @@ TrieShrinkRec[tr_?TrieRuleQ] :=
       ]
     ];
 
+
+(************************************************************)
+(* Trie root to leaf functions                              *)
+(************************************************************)
+
 (* I am not particularly happy with using FixedPoint. This has to be profiled. *)
 Clear[TrieRootToLeafPaths];
 TrieRootToLeafPaths[tr_?TrieQ] :=
@@ -489,30 +545,54 @@ TrieRootToLeafPaths[tr_?TrieQ] :=
 (* This is implemented because it looks neat, and it can be used for tensor creation. *)
 Clear[TrieRootToLeafPathRules];
 TrieRootToLeafPathRules[tr_?TrieQ] :=
-    Map[ Most[#[[1]]]->#[[2]] &,
-      FixedPoint[
-        Flatten[Normal[#] /.
-            Rule[n_, m_?TrieBodyQ] :>
-                If[Length[m] == 1 || m[$TrieValue] > TrieValueTotal[m] || TrieValueTotal[m] < 1,
-                  KeyMap[Append[n, #] &, m],
-                  KeyMap[Append[n, #] &, KeyDrop[m, $TrieValue]]], 1] &,
-        KeyMap[{#} &, tr]
+    Association[
+      Map[ Most[#[[1]]] -> #[[2]] &,
+        FixedPoint[
+          Flatten[Normal[#] /.
+              Rule[n_, m_?TrieBodyQ] :>
+                  If[Length[m] == 1 || m[$TrieValue] > TrieValueTotal[m] || TrieValueTotal[m] < 1,
+                    KeyMap[Append[n, #] &, m],
+                    KeyMap[Append[n, #] &, KeyDrop[m, $TrieValue]]], 1] &,
+          KeyMap[{#} &, tr]
+        ]
       ]
     ];
 
-Clear[TrieGetWords];
-TrieGetWords[ tr_?TrieQ, word_List ] :=
-    Which[
-      Length[word] == 0,
-      {},
+Clear[TrieRootToLeafPathProbabilityRules];
+TrieRootToLeafPathProbabilityRules[tr_?TrieQ] :=
+    ReverseSort @ Association @ Map[ #[[All, 1]] -> Apply[Times, #[[All, 2]]] &, TrieRootToLeafPaths[tr] ];
 
-      TrieKeyExistsQ[tr, word],
-      Map[ Join[Most[word], #]&, TrieRootToLeafPathRules[TrieSubTrie[tr,word]][[All,1]] ],
+
+(************************************************************)
+(* TrieGetWords                                             *)
+(************************************************************)
+
+Clear[TrieGetWords];
+
+TrieGetWords::args = "The first of argument is expected to be a trie, the second argument is expected to be a list or All";
+
+TrieGetWords[ tr_?TrieQ, word : ( _List | All ) : All ] :=
+    Which[
+
+      TrueQ[word === All] || ListQ[word] && Length[word] == 0,
+      Map[ Join, Keys @ TrieRootToLeafPathRules[tr] ],
+
+      ListQ[word] || TrieKeyExistsQ[tr, word],
+      Map[ Join[Most[word], #]&, Keys @ TrieRootToLeafPathRules[TrieSubTrie[tr, word]] ],
 
       True,
       {}
     ];
 
+TrieGetWords[___] :=
+    Block[{},
+      Message[TrieGetWords::args];
+      $Failed
+    ];
+
+(************************************************************)
+(* TriePrune                                                *)
+(************************************************************)
 
 Clear[TriePrune, TriePruneRec];
 TriePrune[trie_?TrieQ, maxLevel_Integer] :=
@@ -525,15 +605,172 @@ TriePruneRec[tr_?TrieRuleQ, maxLevel_Integer, level_Integer] :=
       Which[
         Length[tr] == 0, {},
         Length[tr[[2]]] == 1, tr,
-        maxLevel <= level, key->KeyTake[tr[[2]], $TrieValue],
+        maxLevel <= level, key -> KeyTake[tr[[2]], $TrieValue],
         True,
         key ->
             Join[
-              Association @ KeyValueMap[ TriePruneRec[#1->#2, maxLevel, level + 1] &, KeyDrop[tr[[2]], $TrieValue] ],
+              Association @ KeyValueMap[ TriePruneRec[#1 -> #2, maxLevel, level + 1] &, KeyDrop[tr[[2]], $TrieValue] ],
               KeyTake[tr[[2]], $TrieValue]
             ]
       ]
     ];
+
+
+(************************************************************)
+(* Trie Map / traversal                                     *)
+(************************************************************)
+
+Clear[TrieMap, TrieMapRec];
+
+TrieMap::funcs = "At least one of the second and third argument has to be a function.";
+
+TrieMap[ tr_?TrieQ, preFunc_, postFunc_ ] :=
+    Block[{},
+
+      If[ ( preFunc === Null || preFunc === None ) && ( postFunc === Null || postFunc === None ),
+        Message[TrieMap::funcs];
+        Return[tr]
+      ];
+
+      Association[ TrieMapRec[ First @ Normal @ tr, preFunc, postFunc, 0 ] ]
+    ];
+
+TrieMapRec[tr_?TrieRuleQ, preFunc_, postFunc_, level_Integer ] :=
+    Block[{res, resChildren},
+
+      If[ Length[tr] == 0, Return[{}] ];
+
+      If[ ! ( TrueQ[preFunc === Null] || TrueQ[preFunc === None] ),
+        res = preFunc[tr],
+        (* ELSE *)
+        res = tr
+      ];
+      (*      Print @ Normal @ KeyDrop[ res[[2]], $TrieValue ] ;*)
+      If[ Length[res[[2]]] == 1,
+        resChildren = <||>,
+        (* ELSE *)
+        resChildren = Association @ Map[ TrieMapRec[#, preFunc, postFunc, level + 1]&, Normal @ KeyDrop[ res[[2]], $TrieValue ] ]
+      ];
+
+      res = res[[1]] -> Join[ KeyTake[res[[2]], $TrieValue], resChildren ];
+
+      If[ !(TrueQ[postFunc === Null] || TrueQ[postFunc === None]),
+        res = postFunc[res]
+      ];
+
+      res
+    ];
+
+
+(************************************************************)
+(* Trie threshold removal                                   *)
+(************************************************************)
+
+Clear[TrieThresholdRemove];
+
+SyntaxInformation[TrieThresholdRemove] = { "ArgumentsPattern" -> {_, _, OptionsPattern[]} };
+
+Options[TrieThresholdRemove] = {"Postfix" -> Anonymous, "BelowThreshold" -> True};
+
+TrieThresholdRemove[ tr_?TrieQ, threshold_?NumberQ, opts : OptionsPattern[] ] :=
+    Block[{postfix, belowThresholdQ},
+
+      postfix = OptionValue[TrieThresholdRemove, "Postfix"];
+      belowThresholdQ = TrueQ[OptionValue[TrieThresholdRemove, "BelowThreshold"]];
+
+      TrieMap[ tr, ThresholdRemove[#, threshold, postfix, belowThresholdQ] &, None]
+    ];
+
+
+Clear[ThresholdRemove];
+
+ThresholdRemove[tr_?TrieRuleQ, threshold_?NumberQ, postfix_, belowThresholdQ : (True | False) ] :=
+    Block[{resChildren, removeSum},
+
+      If[Length[KeyDrop[tr, $TrieValue]] == 0, Return[tr]];
+
+      If[ belowThresholdQ,
+        resChildren = Select[KeyDrop[tr[[2]], $TrieValue], #[$TrieValue] >= threshold &],
+        (* ELSE *)
+        resChildren = Select[KeyDrop[tr[[2]], $TrieValue], #[$TrieValue] <= threshold &]
+      ];
+
+      If[! (TrueQ[postfix === None] || TrueQ[postfix === Null]) && Length[resChildren] < Length[tr[[2]]] - 1,
+
+        removeSum = Total @ Map[ #[$TrieValue] &, KeyDrop[tr[[2]], Prepend[ Keys[resChildren], $TrieValue] ] ];
+
+        resChildren = Append[resChildren, postfix -> <|$TrieValue -> removeSum|>]
+      ];
+
+      tr[[1]] -> Join[KeyTake[tr[[2]], $TrieValue], resChildren]
+    ];
+
+
+
+(************************************************************)
+(* Trie Pareto fraction removal                             *)
+(************************************************************)
+
+Clear[TrieParetoFractionRemove];
+
+TrieParetoFractionRemove::pfrac = "The second argument is expected to be a number between 0 and 1.";
+
+SyntaxInformation[TrieParetoFractionRemove] = { "ArgumentsPattern" -> {_, _, OptionsPattern[]} };
+
+Options[TrieParetoFractionRemove] = {"Postfix" -> Anonymous, "RemoveBottomElements" -> True};
+
+TrieParetoFractionRemove[ tr_?TrieQ, paretoFraction_?NumberQ, opts : OptionsPattern[] ] :=
+    Block[{postfix, removeBottomElementsQ},
+
+      postfix = OptionValue[TrieParetoFractionRemove, "Postfix"];
+      removeBottomElementsQ = TrueQ[OptionValue[TrieParetoFractionRemove, "RemoveBottomElements"]];
+
+      If[ !( 0 <= paretoFraction <= 1),
+        Message[TrieParetoFractionRemove::pfrac];
+        Return[$Failed]
+      ];
+
+      TrieMap[ tr, ParetoThresholdRemove[#, paretoFraction, postfix, removeBottomElementsQ] &, None]
+    ];
+
+
+(* Essentially the same as ThresholdRemove, except here we have accumulation and threshold calculation. *)
+Clear[ParetoThresholdRemove];
+
+ParetoThresholdRemove[tr_?TrieRuleQ, paretoFraction_?NumberQ, postfix_, removeBottomElementsQ : (True | False) ] :=
+    Block[{children, acc, threshold, resChildren, removeSum},
+
+      children = KeyDrop[ tr[[2]], $TrieValue ];
+
+      If[Length[children] == 0, Return[tr]];
+
+      children = Reverse[ SortBy[ children, #[$TrieValue]& ] ];
+
+      acc = Accumulate[ Values @ Map[ #[$TrieValue]&, children ] ];
+      acc = AssociationThread[ Keys[children], acc ];
+
+      threshold = paretoFraction * Last[acc];
+
+      If[ removeBottomElementsQ,
+        resChildren = KeyTake[ children, Keys @ Select[ acc, # <= threshold &] ],
+        (* ELSE *)
+        resChildren = KeyTake[ children, Keys @ Select[ acc, # >= threshold &] ]
+      ];
+
+      If[! (TrueQ[postfix === None] || TrueQ[postfix === Null]) && Length[resChildren] < Length[tr[[2]]] - 1,
+
+        removeSum = Total @ Map[ #[$TrieValue] &, KeyDrop[tr[[2]], Prepend[ Keys[resChildren], $TrieValue] ] ];
+
+        resChildren = Append[resChildren, postfix -> <|$TrieValue -> removeSum|>]
+      ];
+
+      tr[[1]] -> Join[KeyTake[tr[[2]], $TrieValue], resChildren]
+    ];
+
+
+(************************************************************)
+(* Trie conversion related functions                        *)
+(************************************************************)
 
 Clear[TrieToRules];
 TrieToRules[tree_?TrieQ] := Block[{ORDER = 0}, TrieToRules[tree, 0, 0]];
@@ -583,23 +820,33 @@ TrieToListTrie[tr_?TrieRuleQ] :=
       Join[ {{k, tr[[2]][$TrieValue]}}, Normal @ Map[TrieToListTrie, Normal[KeyDrop[tr[[2]], $TrieValue]]] ]
     ];
 
+
+(************************************************************)
+(* TrieComparisonGrid                                       *)
+(************************************************************)
+
 ClearAll[TrieComparisonGrid];
-SetAttributes[TrieComparisonGrid, HoldAll]
-Options[TrieComparisonGrid] = Union[Options[Graphics], Options[Grid], {"NumberFormPrecision"->3}];
+SetAttributes[TrieComparisonGrid, HoldAll];
+Options[TrieComparisonGrid] = Union[Options[Graphics], Options[Grid], {"NumberFormPrecision" -> 3}];
 TrieComparisonGrid[trs_List, opts : OptionsPattern[]] :=
-    Block[{graphOpts,gridOpts,nfp},
+    Block[{graphOpts, gridOpts, nfp},
       graphOpts = Select[{opts}, MemberQ[Options[Graphics][[All, 1]], #[[1]]] &];
       gridOpts = Select[{opts}, MemberQ[Options[Grid][[All, 1]], #[[1]]] &];
       nfp = OptionValue["NumberFormPrecision"];
       Grid[{
         First @ Map[HoldForm, Inactivate[Hold[trs]], {2}],
         If[ Length[{graphOpts}] == 0,
-          Map[TrieForm[#] /. {k_String, v_?NumericQ} :> {k, NumberForm[v,nfp]} &, trs],
-          Map[TrieForm[#] /. {k_String, v_?NumericQ} :> {k, NumberForm[v,nfp]} /. (gr_Graphics) :> Append[gr, graphOpts] &, trs],
-          Map[TrieForm[#] /. {k_String, v_?NumericQ} :> {k, NumberForm[v,nfp]} &, trs]
+          Map[TrieForm[#] /. {k_String, v_?NumericQ} :> {k, NumberForm[v, nfp]} &, trs],
+          Map[TrieForm[#] /. {k_String, v_?NumericQ} :> {k, NumberForm[v, nfp]} /. (gr_Graphics) :> Append[gr, graphOpts] &, trs],
+          Map[TrieForm[#] /. {k_String, v_?NumericQ} :> {k, NumberForm[v, nfp]} &, trs]
         ]
       }, gridOpts, Dividers -> All, FrameStyle -> LightGray]
     ];
+
+
+(************************************************************)
+(* Trie classify                                            *)
+(************************************************************)
 
 Clear[TrieClassify];
 
@@ -608,7 +855,7 @@ TrieClassify::notkey = "The second argument is not key in the trie: `1`.";
 Options[TrieClassify] := {"Default" -> None};
 
 TrieClassify[tr_?TrieQ, record_, opts : OptionsPattern[]] :=
-    TrieClassify[tr, record, "Decision", opts] /; FreeQ[{opts}, "Probability"|"TopProbabilities"];
+    TrieClassify[tr, record, "Decision", opts] /; FreeQ[{opts}, "Probability" | "TopProbabilities"];
 
 TrieClassify[tr_?TrieQ, record_, "Decision", opts : OptionsPattern[]] :=
     First@Keys@TrieClassify[tr, record, "Probabilities", opts];
@@ -631,7 +878,7 @@ TrieClassify[tr_?TrieQ, record_, "Probabilities", opts : OptionsPattern[]] :=
       ];
 
       res = TrieSubTrie[tr, record];
-      If[ TrueQ[res===$Failed], Return[$Failed] ];
+      If[ TrueQ[res === $Failed], Return[$Failed] ];
       If[ Length[res] == 0,
         <|dval -> 0|>,
         (* ELSE *)
@@ -640,19 +887,19 @@ TrieClassify[tr_?TrieQ, record_, "Probabilities", opts : OptionsPattern[]] :=
       ]
     ];
 
-TrieClassify[tr_?TrieQ, records:(_Dataset|{_List..}), "Decision", opts : OptionsPattern[]] :=
+TrieClassify[tr_?TrieQ, records : (_Dataset | {_List..}), "Decision", opts : OptionsPattern[]] :=
     First @* Keys @* TakeLargest[1] /@ TrieClassify[tr, records, "Probabilities", opts];
 
-TrieClassify[tr_?TrieQ, records:(_Dataset|{_List..}), "Probability" -> class_, opts : OptionsPattern[]] :=
+TrieClassify[tr_?TrieQ, records : (_Dataset | {_List..}), "Probability" -> class_, opts : OptionsPattern[]] :=
     Map[Lookup[#, class, 0]&, TrieClassify[tr, records, "Probabilities", opts] ];
 
-TrieClassify[tr_?TrieQ, records:(_Dataset|{_List..}), "TopProbabilities", opts : OptionsPattern[]] :=
+TrieClassify[tr_?TrieQ, records : (_Dataset | {_List..}), "TopProbabilities", opts : OptionsPattern[]] :=
     Map[ Select[#, # > 0 &]&, TrieClassify[tr, records, "Probabilities", opts] ];
 
-TrieClassify[tr_?TrieQ, records:(_Dataset|{_List..}), "TopProbabilities" -> n_Integer, opts : OptionsPattern[]] :=
+TrieClassify[tr_?TrieQ, records : (_Dataset | {_List..}), "TopProbabilities" -> n_Integer, opts : OptionsPattern[]] :=
     Map[TakeLargest[#, UpTo[n]]&, TrieClassify[tr, records, "Probabilities", opts] ];
 
-TrieClassify[tr_?TrieQ, records:(_Dataset|{_List..}), "Probabilities", opts:OptionsPattern[] ] :=
+TrieClassify[tr_?TrieQ, records : (_Dataset | {_List..}), "Probabilities", opts : OptionsPattern[] ] :=
     Block[{clRes, classLabels, stencil},
 
       clRes = Map[ TrieClassify[tr, #, "Probabilities", opts] &, Normal@records ];

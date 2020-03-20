@@ -435,7 +435,7 @@ QRMonLeastSquaresFit[{ n_Integer, r:{_?NumericQ, _?NumericQ} }][xs_, context_] :
       QRMonBind,
       QRMonUnit[xs, context],
       {QRMonGetData,
-        QRMonLeastSquaresFit[Table[ChebyshevT[i, Rescale[x, MinMax[#[[All, 1]]], r]], {i, 0, n}], x, opts][##]&}
+        QRMonLeastSquaresFit[Table[ChebyshevT[i, Rescale[x, MinMax[#[[All, 1]]], r]], {i, 0, n}], x][##]&}
     ];
 
 QRMonLeastSquaresFit[funcs_List][xs_, context_] :=
@@ -1004,7 +1004,7 @@ Clear[QRMonConditionalCDFPlot];
 
 SyntaxInformation[QRMonConditionalCDFPlot] = { "ArgumentsPattern" -> {OptionsPattern[]} };
 
-Options[QRMonConditionalCDFPlot] := Prepend[ Options[Plot], "Echo"->True ];
+Options[QRMonConditionalCDFPlot] := Join[ {"Echo"->True, "QuantileGridLines" -> True}, Options[Plot] ];
 
 QRMonConditionalCDFPlot[$QRMonFailure] := $QRMonFailure;
 
@@ -1012,11 +1012,16 @@ QRMonConditionalCDFPlot[__][$QRMonFailure] := $QRMonFailure;
 
 QRMonConditionalCDFPlot[xs_, context_Association] := QRMonConditionalCDFPlot[ Options[QRMonConditionalCDFPlot] ][xs, context];
 
+QRMonConditionalCDFPlot[ point_?NumericQ, opts:OptionsPattern[]][xs_, context_] :=
+    QRMonConditionalCDFPlot[ {point}, opts][xs, context];
+
 QRMonConditionalCDFPlot[ points_?VectorQ, opts:OptionsPattern[]][xs_, context_] :=
     Fold[ QRMonBind, QRMonUnit[xs, context], {QRMonConditionalCDF[points], QRMonConditionalCDFPlot[opts]}];
 
 QRMonConditionalCDFPlot[ opts:OptionsPattern[] ][xs_, context_] :=
-    Block[{funcs, res, plotOpts},
+    Block[{funcs, res, plotOpts, quantileGridLinesQ},
+
+      quantileGridLinesQ = TrueQ[ OptionValue[QRMonConditionalCDFPlot, "QuantileGridLines"] ];
 
       Which[
 
@@ -1030,18 +1035,26 @@ QRMonConditionalCDFPlot[ opts:OptionsPattern[] ][xs_, context_] :=
 
       If[ TrueQ[funcs === $QRMonFailure], Return[$QRMonFailure] ];
 
-      plotOpts = Sequence @@ DeleteCases[{opts}, HoldPattern["Echo"->_] ];
+      plotOpts = FilterRules[ {opts}, Options[Plot]];
+
+      (*  Epilog -> { MapThread[ Callout[{#1,0}, #2]&, { #["Coordinates"][[1]], Select[Keys[context["regressionFunctions"]], NumberQ]} ]} *)
 
       res =
           Association@
               KeyValueMap[#1 ->
                   Plot[#2[x], Prepend[First[#2["Domain"]], x],
                     Evaluate[plotOpts],
+                    Evaluate[If[ quantileGridLinesQ, GridLines -> { #2["Coordinates"][[1]], None}, {}]],
                     PlotRange -> {All, All}, PlotLegends -> False,
                     PlotTheme -> "Scientific",
                     PlotLabel -> Row[{"CDF at regressor value:", Spacer[2], #1}],
                     FrameLabel -> {"regressand", "Probability"},
-                    ImageSize -> Small
+                    ImageSize -> Small,
+                    FrameTicks ->
+                        {
+                          {Automatic, Automatic},
+                          {Automatic, If[ quantileGridLinesQ, MapThread[ {#1, #2}&, { #2["Coordinates"][[1]], Select[Keys[context["regressionFunctions"]], NumberQ]} ], Automatic]}
+                        }
                   ] &, funcs];
 
       If[ TrueQ[OptionValue[QRMonConditionalCDFPlot, "Echo"]],
@@ -1054,7 +1067,7 @@ QRMonConditionalCDFPlot[ opts:OptionsPattern[] ][xs_, context_] :=
 QRMonConditionalCDFPlot[__][__] :=
     Block[{},
       Echo[
-        "Regressor points are expected as an argument and options. (Plot options or \"Echo\"->(True|False).)",
+        "Regressor points are expected as an argument and options. (Plot options or \"Echo\"->(True|False),  \"QuantileGridLines\"->(True|False).)",
         "QRMonConditionalCDFPlot:"
       ];
       $QRMonFailure
@@ -1137,7 +1150,7 @@ QRMonOutliers[__][$QRMonFailure] := $QRMonFailure;
 QRMonOutliers[xs_, context_Association] := QRMonOutliers[][xs, context];
 
 QRMonOutliers[][xs_, context_] :=
-    Block[{knots, fn, tq, bq, tfunc, bfunc, outliers, data},
+    Block[{fn, tq, bq, tfunc, bfunc, outliers, data},
 
       If[ !( KeyExistsQ[context, "regressionFunctions"] && Length[KeyDrop[context["regressionFunctions"], "mean"]] > 0 ),
         Echo["Calculate (top and bottom) regression quantiles first.", "QRMonOutliers:"];
@@ -1804,7 +1817,7 @@ ChowTestStatistic[data : {{_?NumberQ, _?NumberQ} ..}, splitPoints : {_?NumberQ .
 ChowTestStatistic[data1 : {{_?NumberQ, _?NumberQ} ..}, data2 : {{_?NumberQ, _?NumberQ} ..}, funcs_List: {1, x}, var_: x].";
 
 ChowTestStatistic[data : {{_?NumberQ, _?NumberQ} ..}, splitPoints : {_?NumberQ ..}, funcs_List : {1, x}, var_: x] :=
-    Block[{data1, data2, S, S1, S2, k, fm, res},
+    Block[{data1, data2, S, S1, S2, k, ff, res},
 
       If[Length[funcs] == 0,
         Message[ChowTestStatistic::empfuncs];
@@ -1823,7 +1836,13 @@ ChowTestStatistic[data : {{_?NumberQ, _?NumberQ} ..}, splitPoints : {_?NumberQ .
 
       k = Count[Developer`SymbolQ /@ funcs, True];
 
-      res = Fit[data, funcs, var, "FitResiduals"];
+      If[ $VersionNumber >= 12,
+        res = Fit[data, funcs, var, "FitResiduals"],
+        (* ELSE *)
+        ff = Fit[data, funcs, var];
+        res = MapThread[(ff /. var -> #1) - #2 &, Transpose[data] ]
+      ];
+
       S = res.res;
 
       Map[

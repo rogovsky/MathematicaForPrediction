@@ -104,6 +104,11 @@ QRMonFindChowTestLocalMaxima::usage = "QRMonFindChowTestLocalMaxima[points : ( {
 finds structural breaks in the data using the Chow Test. \
 It takes as options the options of QRMonQuantileRegression, QRMonFindLocalExtrema, and QRMonPlot.";
 
+QRMonFindStructuralBreaks::usage = "QRMonFindStructuralBreaks[points : ( { _?NumberQ.. } | Automatic ), fitFuncs_, opts___] \
+finds structural breaks in the data using the Chow Test. \
+It takes as options the options of QRMonQuantileRegression, QRMonFindLocalExtrema, and QRMonPlot. \
+A synonym of QRMonFindChowTestLocalMaxima.";
+
 QRMonPlotStructuralBreakSplits::usage = "QRMonPlotStructuralBreakSplits[ points, fitFuncs, opts___] \
 makes a list of plots of structural break splits.";
 
@@ -114,7 +119,6 @@ Needs["MonadicQuantileRegression`"];
 (**************************************************************)
 (* Find Chow Test local maxima                                *)
 (**************************************************************)
-
 
 Clear[QRMonFindChowTestLocalMaxima];
 
@@ -191,11 +195,14 @@ QRMonFindChowTestLocalMaxima[ points : ( { _?NumberQ.. } | Automatic ), fitFuncs
 QRMonFindChowTestLocalMaxima[___][xs_, context_Association] :=
     Block[{},
       Echo["The first argument is expected to be a list of points;" <>
-          "the second argument is expected to be a list of fit functions",
+          "the second argument is expected to be a list of fit functions.",
         "QRMonFindChowTestLocalMaxima:"
       ];
       $QRMonFailure
     ];
+
+Clear[QRMonFindStructuralBreaks];
+QRMonFindStructuralBreaks = QRMonFindChowTestLocalMaxima;
 
 
 (**************************************************************)
@@ -315,7 +322,7 @@ QRMonPlotStructuralBreakSplits[ splitPointsArg : ( { _?NumberQ.. } | Automatic )
 QRMonPlotStructuralBreakSplits[___][xs_, context_Association] :=
     Block[{},
       Echo["The first argument is expected to be a list of points;" <>
-          "the second argument is expected to be a list of fit functions",
+          "the second argument is expected to be a list of fit functions.",
         "QRMonPlotStructuralBreakSplits:"
       ];
       $QRMonFailure

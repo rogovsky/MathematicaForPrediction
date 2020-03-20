@@ -70,13 +70,18 @@
 BeginPackage["DataReshape`"];
 
 ToLongForm::usage = "ToLongForm[ds_Dataset, idColumns_, valueColumns_] \
-converts the dataset ds into long form. The resulting dataset has the columns idColumns and \
-the columns \"Variable\" and \"Value\" derived from valueColumns."
+converts the dataset ds into long form. The result dataset has the columns idColumns and \
+the columns \"Variable\" and \"Value\" derived from valueColumns.";
 
 ToWideForm::usage = "ToWideForm[ds_Dataset, idColumns_, variableColumn_, valueColumns_] \
-converts the dataset ds into wide form. The resulting dataset has columns that are unique values of variableColumn and \
-with values that are the corresponding values of valueColumn."
+converts the dataset ds into wide form. The result dataset has columns that are unique values of \
+variableColumn and with values that are the corresponding values of valueColumn.";
 
+RecordsToLongForm::usage = "RecordsToLongForm[records: Association[(_ -> _Association) ..]] \
+converts an association of associations into a long form dataset.";
+
+RecordsToWideForm::usage = "RecordsToWideForm[records: { (_Association) ..}, aggrFunc_] \
+converts a list of associations into a wide form dataset using a specified aggregation function.";
 
 Begin["`Private`"];
 
@@ -84,7 +89,7 @@ Begin["`Private`"];
 (* Utilities                                               *)
 (***********************************************************)
 
-Clear[ColumnSpecQ]
+Clear[ColumnSpecQ];
 
 ColumnSpecQ[x_] := IntegerQ[x] || StringQ[x] || MatchQ[x, Key[__]];
 
@@ -93,7 +98,9 @@ ColumnSpecQ[x_] := IntegerQ[x] || StringQ[x] || MatchQ[x, Key[__]];
 (* ToLongForm                                              *)
 (***********************************************************)
 
-Clear[ToLongForm]
+Clear[ToLongForm];
+
+ToLongForm[ds_Association] := RecordsToLongForm[ds];
 
 ToLongForm[ds_Dataset, idColumn_?ColumnSpecQ, valueColumn_?ColumnSpecQ] := ToLongForm[ds, {idColumn}, {valueColumn}];
 
@@ -190,8 +197,9 @@ ToLongForm[ds_Dataset, "RowID", valueColumns_List] :=
       ToLongForm[ds, 0, Flatten[Position[keys,#]& /@ valueColumns] ]
     ];
 
-ToLongForm::args = "The first argument is expected to be a dataset; \
-the rest of the arguments are expected to be columns specifications."
+ToLongForm::args = "The first argument is expected to be an association or a dataset. \
+If the first argument is an association then no other arguments are expected. \
+If the first argument is a dataset then the rest of the arguments are expected to be columns specifications.";
 
 ToLongForm[___] :=
     Block[{},
@@ -199,9 +207,18 @@ ToLongForm[___] :=
       $Failed
     ];
 
-(* This an "internal" function. It is assumed that all records have the same keys. *)
+
+(* RecordsToLongForm is an "internal" function. It is assumed that all records have the same keys. *)
 (* valueColumns is expected to be a list of keys that is a subset of the records keys. *)
-RecordsToLongForm[records: Association[(_ -> _Association) ..]] :=
+
+Clear[NotAssociationQ];
+NotAssociationQ[x_] := Not[AssociationQ[x]];
+
+Clear[RecordsToLongForm];
+RecordsToLongForm[records: Association[( _?NotAssociationQ -> _Association) ..]] :=
+    RecordsToLongForm[ KeyMap[ <|"RowKey"->#|>&, records ] ];
+
+RecordsToLongForm[records: Association[(_Association -> _Association) ..]] :=
     Block[{res},
       res =
           KeyValueMap[
@@ -319,4 +336,4 @@ RecordsToWideForm[records: { (_Association) ..}, aggrFunc_] :=
 
 End[]; (* `Private` *)
 
-EndPackage[]
+EndPackage[];

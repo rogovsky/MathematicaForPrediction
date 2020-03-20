@@ -82,7 +82,7 @@ VerificationTest[(* 2 *)
 ];
 
 VerificationTest[(* 4 *)
-  lsTitanic = Import["https://raw.githubusercontent.com/antononcube/MathematicaVsR/master/Data/MathematicaVsR-Data-Titantic.csv"];
+  lsTitanic = Import["https://raw.githubusercontent.com/antononcube/MathematicaVsR/master/Data/MathematicaVsR-Data-Titanic.csv"];
   dsTitanic = Dataset[Dataset[Rest[lsTitanic]][All, AssociationThread[First[lsTitanic], #] &]];
   Head[dsTitanic] === Dataset && Normal[Keys[dsTitanic[[1]]]] == {"id", "passengerClass", "passengerAge", "passengerSex", "passengerSurvival"}
   ,
@@ -281,6 +281,7 @@ VerificationTest[(* 19 *)
   TestID -> "smrMushroom-recommendations-by-profile-2"
 ];
 
+
 (*---------------------------------------------------------*)
 (* Application of term weights                             *)
 (*---------------------------------------------------------*)
@@ -307,7 +308,7 @@ VerificationTest[(* 20 *)
     SMRMonBind,
     smrTitanic2,
     {
-      SMRMonApplyTermWeightFunctions,
+      SMRMonApplyTermWeightFunctions[ "GlobalWeightFunction" -> "IDF", "LocalWeightFunction" -> "None", "NormalizerFunction" -> "Cosine"],
       SMRMonRecommend[<|"10" -> 1, "120" -> 0.5|>, 12],
       SMRMonTakeValue
     }
@@ -320,11 +321,33 @@ VerificationTest[(* 20 *)
 ];
 
 VerificationTest[(* 21 *)
+  recs2 = Fold[
+    SMRMonBind,
+    smrTitanic2,
+    {
+      SMRMonApplyTermWeightFunctions,
+      SMRMonRecommend[<|"10" -> 1, "120" -> 0.5|>, 12],
+      SMRMonTakeValue
+    }
+  ];
+  VectorQ[Keys[recs2], StringQ] && VectorQ[Values[recs2], NumberQ]
+  ,
+  True
+  ,
+  TestID -> "smrTitanic2-apply-term-weights-3"
+];
+
+
+(*---------------------------------------------------------*)
+(* Proofs                                                  *)
+(*---------------------------------------------------------*)
+
+VerificationTest[(* 22 *)
   proofs1 = Fold[
     SMRMonBind,
     smrTitanic2,
     {
-      SMRMonMetadataProofs[ <|"male" -> 1, "female" -> 1, "died" -> 1 |>, "10" ],
+      SMRMonProveByMetadata[ <|"male" -> 1, "female" -> 1, "died" -> 1 |>, "10" ],
       SMRMonTakeValue
     }
   ];
@@ -335,13 +358,13 @@ VerificationTest[(* 21 *)
   TestID -> "smrTitanic2-metadata-proofs-1"
 ];
 
-VerificationTest[(* 22 *)
+VerificationTest[(* 23 *)
   itemNames = { "10", "120", "320" };
   proofs2 = Fold[
     SMRMonBind,
     smrTitanic2,
     {
-      SMRMonMetadataProofs[ <|"male" -> 1, "female" -> 1, "died" -> 1 |>, itemNames, "Normalize" -> True ],
+      SMRMonProveByMetadata[ <|"male" -> 1, "female" -> 1, "died" -> 1 |>, itemNames, "Normalize" -> True ],
       SMRMonTakeValue
     }
   ];
@@ -352,12 +375,12 @@ VerificationTest[(* 22 *)
   TestID -> "smrTitanic2-metadata-proofs-2"
 ];
 
-VerificationTest[(* 23 *)
+VerificationTest[(* 24 *)
   proofs3 = Fold[
     SMRMonBind,
     smrTitanic2,
     {
-      SMRMonHistoryProofs[ <|"10" -> 1, "12" -> 1, "13" -> 1 |>, "120" ],
+      SMRMonProveByHistory[ <|"10" -> 1, "12" -> 1, "13" -> 1 |>, "120" ],
       SMRMonTakeValue
     }
   ];
@@ -368,13 +391,13 @@ VerificationTest[(* 23 *)
   TestID -> "smrTitanic2-history-proofs-1"
 ];
 
-VerificationTest[(* 24 *)
+VerificationTest[(* 25 *)
   itemNames = { "120", "220", "320" };
   proofs4 = Fold[
     SMRMonBind,
     smrTitanic2,
     {
-      SMRMonHistoryProofs[ <|"10" -> 1, "12" -> 1, "13" -> 1 |>, itemNames, "Normalize" -> True ],
+      SMRMonProveByHistory[ <|"10" -> 1, "12" -> 1, "13" -> 1 |>, itemNames, "Normalize" -> True ],
       SMRMonTakeValue
     }
   ];
@@ -384,5 +407,83 @@ VerificationTest[(* 24 *)
   ,
   TestID -> "smrTitanic2-history-proofs-2"
 ];
+
+(*---------------------------------------------------------*)
+(* Get top recommendations                                 *)
+(*---------------------------------------------------------*)
+
+VerificationTest[(* 25 *)
+  recs1 =
+      Fold[
+        SMRMonBind,
+        smrMushroom2,
+        {
+          SMRMonGetTopRecommendations[<|"1" -> 1, "12" -> 0.5|>, 12],
+          SMRMonTakeValue
+        }
+      ];
+
+  recs2 =
+      Fold[
+        SMRMonBind,
+        smrMushroom2,
+        {
+          SMRMonRecommend[<|"1" -> 1, "12" -> 0.5|>, 12],
+          SMRMonTakeValue
+        }
+      ];
+
+  recs1 == recs2
+  ,
+  True
+  ,
+  TestID -> "smrMushroom-get-top-recommendations-1"
+];
+
+
+VerificationTest[(* 26 *)
+  precs1 =
+      Fold[
+        SMRMonBind,
+        smrMushroom,
+        {
+          SMRMonGetTopRecommendations[ {"odor:pungent", "edibility:poisonous"}, 12],
+          SMRMonTakeValue
+        }
+      ];
+
+  precs2 =
+      Fold[
+        SMRMonBind,
+        smrMushroom,
+        {
+          SMRMonRecommendByProfile[ {"odor:pungent", "edibility:poisonous"}, 12],
+          SMRMonTakeValue
+        }
+      ];
+
+  precs1 == precs2
+  ,
+  True
+  ,
+  TestID -> "smrMushroom-get-top-recommendations-2"
+];
+
+
+VerificationTest[(* 27 *)
+  Fold[
+    SMRMonBind,
+    smrMushroom2,
+    {
+      SMRMonGetTopRecommendations[<|"blah1" -> 1, "blah12" -> 0.5|>, 12],
+      SMRMonTakeValue
+    }
+  ]
+  ,
+  $SMRMonFailure
+  ,
+  TestID -> "smrMushroom-get-top-recommendations-3"
+];
+
 
 EndTestSection[]
